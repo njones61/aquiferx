@@ -1,0 +1,6 @@
+[
+  { "id": "oregon", "path": "/data/oregon", "name": "Oregon - Klamath Basin" },
+  { "id": "utah", "path": "/data/utah", "name": "Utah" },
+  { "id": "dominican-republic", "path": "/data/dominican republic", "name": "Dominican Republic" },
+  { "id": "niger", "path": "/data/niger", "name": "Niger" }
+]
