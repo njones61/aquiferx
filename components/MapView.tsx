@@ -1,7 +1,41 @@
 
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import L from 'leaflet';
+import { Layers, ChevronRight } from 'lucide-react';
 import { Region, Aquifer, Well, Measurement } from '../types';
+
+const BASEMAPS = {
+  'Topographic': {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri',
+    thumbnail: 'https://www.arcgis.com/sharing/rest/content/items/67372ff42cd145319639a99152b15bc3/info/thumbnail/ago_downloaded.png'
+  },
+  'Imagery': {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri',
+    thumbnail: 'https://www.arcgis.com/sharing/rest/content/items/10df2279f9684e4a9f6a7f08febac2a9/info/thumbnail/ago_downloaded.png'
+  },
+  'Streets': {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri',
+    thumbnail: 'https://www.arcgis.com/sharing/rest/content/items/3b93337983e9436f8db950e38a8629af/info/thumbnail/ago_downloaded.png'
+  },
+  'Light Gray': {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri',
+    thumbnail: 'https://www.arcgis.com/sharing/rest/content/items/8b3d38c0819547faa83f7b7aca80bd76/info/thumbnail/ago_downloaded.png'
+  },
+  'Dark Gray': {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri',
+    thumbnail: 'https://www.arcgis.com/sharing/rest/content/items/358ec1e175ea41c3bf5c68f0da11ae2b/info/thumbnail/ago_downloaded.png'
+  },
+  'Terrain': {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri',
+    thumbnail: 'https://www.arcgis.com/sharing/rest/content/items/c61ad8ab017d49e1a82f580ee1298571/info/thumbnail/ago_downloaded.png'
+  }
+};
 
 interface MapViewProps {
   regions: Region[];
@@ -35,15 +69,21 @@ const MapView: React.FC<MapViewProps> = ({
     return counts;
   }, [measurements]);
   const mapRef = useRef<L.Map | null>(null);
+  const basemapLayerRef = useRef<L.TileLayer | null>(null);
   const regionLayerRef = useRef<L.FeatureGroup | null>(null);
   const aquiferLayerRef = useRef<L.FeatureGroup | null>(null);
   const wellLayerRef = useRef<L.FeatureGroup | null>(null);
 
+  const [currentBasemap, setCurrentBasemap] = useState<keyof typeof BASEMAPS>('Topographic');
+  const [isBasemapMenuOpen, setIsBasemapMenuOpen] = useState(false);
+
   useEffect(() => {
     if (!mapRef.current) {
       mapRef.current = L.map('map-container').setView([37.1, -113.5], 10);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO'
+
+      const basemap = BASEMAPS[currentBasemap];
+      basemapLayerRef.current = L.tileLayer(basemap.url, {
+        attribution: basemap.attribution
       }).addTo(mapRef.current);
 
       regionLayerRef.current = L.featureGroup().addTo(mapRef.current);
@@ -51,6 +91,25 @@ const MapView: React.FC<MapViewProps> = ({
       wellLayerRef.current = L.featureGroup().addTo(mapRef.current);
     }
   }, []);
+
+  // Handle basemap changes
+  const changeBasemap = (name: keyof typeof BASEMAPS) => {
+    if (!mapRef.current) return;
+
+    if (basemapLayerRef.current) {
+      mapRef.current.removeLayer(basemapLayerRef.current);
+    }
+
+    const basemap = BASEMAPS[name];
+    basemapLayerRef.current = L.tileLayer(basemap.url, {
+      attribution: basemap.attribution
+    }).addTo(mapRef.current);
+
+    // Move basemap to back so other layers stay on top
+    basemapLayerRef.current.bringToBack();
+
+    setCurrentBasemap(name);
+  };
 
   // Update Region Layer
   useEffect(() => {
@@ -145,7 +204,66 @@ const MapView: React.FC<MapViewProps> = ({
   }, [wells, selectedAquifer, wellMeasurementCounts]);
 
   return (
-    <div id="map-container" className="w-full h-full" />
+    <div className="relative w-full h-full">
+      <div id="map-container" className="w-full h-full" />
+
+      {/* Basemap Gallery */}
+      <div className="absolute top-3 right-3 z-[1000]">
+        {!isBasemapMenuOpen ? (
+          /* Collapsed - just the icon button */
+          <button
+            onClick={() => setIsBasemapMenuOpen(true)}
+            className="flex items-center justify-center w-8 h-8 bg-white rounded shadow-md border border-slate-300 hover:bg-slate-50 transition-colors"
+            title="Basemap Gallery"
+          >
+            <Layers size={16} className="text-slate-600" />
+          </button>
+        ) : (
+          /* Expanded - gallery panel */
+          <div className="bg-white rounded shadow-lg border border-slate-300 overflow-hidden" style={{ width: '260px' }}>
+            {/* Header with collapse button */}
+            <div className="flex items-center justify-end px-2 py-1 bg-white border-b border-slate-200">
+              <button
+                onClick={() => setIsBasemapMenuOpen(false)}
+                className="flex items-center justify-center w-6 h-6 hover:bg-slate-100 rounded transition-colors"
+                title="Collapse"
+              >
+                <ChevronRight size={16} className="text-slate-500" />
+              </button>
+            </div>
+
+            {/* Basemap List */}
+            <div className="max-h-80 overflow-y-auto">
+              {Object.entries(BASEMAPS).map(([name, config]) => (
+                <button
+                  key={name}
+                  onClick={() => changeBasemap(name as keyof typeof BASEMAPS)}
+                  className={`w-full flex items-center gap-3 p-2 text-left transition-colors border-2 ${
+                    currentBasemap === name
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-transparent hover:bg-slate-50'
+                  }`}
+                >
+                  <img
+                    src={config.thumbnail}
+                    alt={name}
+                    className="w-16 h-16 object-cover rounded flex-shrink-0"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                  <span className={`text-sm ${
+                    currentBasemap === name ? 'font-medium text-slate-900' : 'text-slate-700'
+                  }`}>
+                    {name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

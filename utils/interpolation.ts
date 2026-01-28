@@ -1,18 +1,30 @@
 
 /**
- * Simple Monotonic Cubic Spline (PCHIP-like) for time-series.
- * Given points (x, y), it calculates interpolated values.
+ * Attempt cubic spline interpolation for smoother curves.
+ * Falls back gracefully for edge cases.
  */
 export function interpolatePCHIP(x: number[], y: number[], targetX: number[]): number[] {
   const n = x.length;
   if (n < 2) return targetX.map(() => (n === 1 ? y[0] : 0));
 
-  // 1. Calculate intervals
+  // For 2 points, just do linear
+  if (n === 2) {
+    const slope = (y[1] - y[0]) / (x[1] - x[0]);
+    return targetX.map(tx => {
+      if (tx <= x[0]) return y[0];
+      if (tx >= x[1]) return y[1];
+      return y[0] + slope * (tx - x[0]);
+    });
+  }
+
+  // Use natural cubic spline for 3+ points (smoother than PCHIP)
+  // This allows overshooting but produces nicer curves
+
+  // 1. Calculate intervals and slopes
   const h = new Array(n - 1);
   const delta = new Array(n - 1);
   for (let i = 0; i < n - 1; i++) {
     h[i] = x[i + 1] - x[i];
-    // Guard against division by zero (duplicate x values)
     if (h[i] === 0) {
       delta[i] = 0;
     } else {
@@ -20,29 +32,48 @@ export function interpolatePCHIP(x: number[], y: number[], targetX: number[]): n
     }
   }
 
-  // 2. Calculate slopes (m)
-  const m = new Array(n);
+  // 2. Build tridiagonal system for natural cubic spline
+  // Second derivatives at each point
+  const a = new Array(n).fill(0);
+  const b = new Array(n).fill(0);
+  const c = new Array(n).fill(0);
+  const d = new Array(n).fill(0);
+
+  // Natural spline: second derivative = 0 at endpoints
+  b[0] = 1;
+  b[n - 1] = 1;
+
   for (let i = 1; i < n - 1; i++) {
-    if (delta[i - 1] * delta[i] <= 0) {
-      m[i] = 0;
-    } else {
-      const w1 = 2 * h[i] + h[i - 1];
-      const w2 = h[i] + 2 * h[i - 1];
-      const denom = w1 / delta[i - 1] + w2 / delta[i];
-      // Guard against division issues
-      if (!isFinite(denom) || denom === 0) {
-        m[i] = 0;
-      } else {
-        m[i] = (w1 + w2) / denom;
-      }
+    a[i] = h[i - 1];
+    b[i] = 2 * (h[i - 1] + h[i]);
+    c[i] = h[i];
+    d[i] = 6 * (delta[i] - delta[i - 1]);
+  }
+
+  // Solve tridiagonal system using Thomas algorithm
+  const m = new Array(n).fill(0); // second derivatives
+
+  // Forward elimination
+  for (let i = 1; i < n; i++) {
+    if (b[i - 1] === 0) continue;
+    const w = a[i] / b[i - 1];
+    b[i] -= w * c[i - 1];
+    d[i] -= w * d[i - 1];
+  }
+
+  // Back substitution
+  if (b[n - 1] !== 0) {
+    m[n - 1] = d[n - 1] / b[n - 1];
+  }
+  for (let i = n - 2; i >= 0; i--) {
+    if (b[i] !== 0) {
+      m[i] = (d[i] - c[i] * m[i + 1]) / b[i];
     }
   }
-  // Boundary conditions (one-sided)
-  m[0] = isFinite(delta[0]) ? delta[0] : 0;
-  m[n - 1] = isFinite(delta[n - 2]) ? delta[n - 2] : 0;
 
-  // 3. Interpolate
+  // 3. Interpolate using cubic spline formula
   return targetX.map(tx => {
+    // Clamp to range
     if (tx <= x[0]) return y[0];
     if (tx >= x[n - 1]) return y[n - 1];
 
@@ -53,19 +84,17 @@ export function interpolatePCHIP(x: number[], y: number[], targetX: number[]): n
     // Guard against zero interval
     if (h[i] === 0) return y[i];
 
-    const t = (tx - x[i]) / h[i];
-    const t2 = t * t;
-    const t3 = t2 * t;
+    // Cubic spline interpolation formula
+    const t = tx - x[i];
+    const hi = h[i];
 
-    // Hermite basis functions
-    const h00 = 2 * t3 - 3 * t2 + 1;
-    const h10 = t3 - 2 * t2 + t;
-    const h01 = -2 * t3 + 3 * t2;
-    const h11 = t3 - t2;
+    const a_coef = (m[i + 1] - m[i]) / (6 * hi);
+    const b_coef = m[i] / 2;
+    const c_coef = delta[i] - hi * (2 * m[i] + m[i + 1]) / 6;
+    const d_coef = y[i];
 
-    const result = h00 * y[i] + h10 * h[i] * m[i] + h01 * y[i + 1] + h11 * h[i] * m[i + 1];
+    const result = a_coef * t * t * t + b_coef * t * t + c_coef * t + d_coef;
 
-    // Return original y value if interpolation failed
     return isFinite(result) ? result : y[i];
   });
 }

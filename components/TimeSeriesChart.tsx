@@ -56,10 +56,10 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements }) => {
 
     const interpolatedY = interpolatePCHIP(xValues, yValues, targetX);
 
-    // Combine for charting
+    // Combine for charting - keep full precision
     const points: ChartPoint[] = targetX.map((tx, i) => ({
       date: tx,
-      wte: Number(interpolatedY[i].toFixed(2)),
+      wte: interpolatedY[i],
       isInterpolated: !xValues.includes(tx)
     }));
 
@@ -112,21 +112,22 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements }) => {
             formatter={(value: number) => [`${value} ft`, 'Elevation']}
             contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
           />
-          {/* Main Interpolated Line */}
-          <Line 
-            type="monotone" 
-            dataKey="wte" 
-            stroke="#3b82f6" 
-            strokeWidth={3}
+          {/* Main Interpolated Line - use linear since we already did PCHIP interpolation */}
+          <Line
+            type="linear"
+            dataKey="wte"
+            stroke="#3b82f6"
+            strokeWidth={2}
             dot={false}
-            animationDuration={1500}
+            animationDuration={400}
             activeDot={{ r: 6, strokeWidth: 0 }}
           />
           {/* Discrete points for actual measurements */}
           <Line
-            type="monotone"
+            type="linear"
             dataKey="wte"
             stroke="transparent"
+            animationDuration={400}
             dot={(props) => {
               const { cx, cy, payload } = props;
               if (payload.isInterpolated) return null;
