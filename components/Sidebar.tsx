@@ -131,30 +131,63 @@ const Sidebar: React.FC<SidebarProps> = ({
     return map;
   }, [modelMeta]);
 
+  // Region-level lookups for single-unit regions, where rasters/models render
+  // directly under the region (the aquifer level is hidden by design).
+  const rastersByRegion = useMemo(() => {
+    const map = new Map<string, RasterAnalysisMeta[]>();
+    for (const m of rasterMeta) {
+      const list = map.get(m.regionId) || [];
+      list.push(m);
+      map.set(m.regionId, list);
+    }
+    return map;
+  }, [rasterMeta]);
+
+  const modelsByRegion = useMemo(() => {
+    const map = new Map<string, ImputationModelMeta[]>();
+    for (const m of modelMeta) {
+      const list = map.get(m.regionId) || [];
+      list.push(m);
+      map.set(m.regionId, list);
+    }
+    return map;
+  }, [modelMeta]);
+
   // --- Flat items for keyboard nav ---
   const flatItems = useMemo(() => {
     const items: TreeItem[] = [];
     for (const r of regions) {
       items.push({ key: `region-${r.id}`, type: 'region', regionId: r.id });
-      if (expandedRegionIds.has(r.id) && !r.singleUnit) {
-        const regionAquifers = aquifersByRegion.get(r.id) || [];
-        for (const a of regionAquifers) {
-          items.push({ key: `aquifer-${a.id}`, type: 'aquifer', regionId: r.id, aquiferId: a.id });
-          if (expandedAquiferIds.has(a.id)) {
-            const rasters = rastersByAquifer.get(`${r.id}:${a.id}`) || [];
-            for (const m of rasters) {
-              items.push({ key: `raster-${m.regionId}-${m.dataType}_${m.code}`, type: 'raster', regionId: r.id, aquiferId: a.id, rasterCode: m.code, rasterDataType: m.dataType });
-            }
-            const models = modelsByAquifer.get(`${r.id}:${a.id}`) || [];
-            for (const m of models) {
-              items.push({ key: `model-${m.regionId}-${m.code}`, type: 'model', regionId: r.id, aquiferId: a.id, modelCode: m.code });
-            }
+      if (!expandedRegionIds.has(r.id)) continue;
+      if (r.singleUnit) {
+        // Rasters/models render directly under the region (no aquifer row).
+        const rasters = rastersByRegion.get(r.id) || [];
+        for (const m of rasters) {
+          items.push({ key: `raster-${m.regionId}-${m.dataType}_${m.code}`, type: 'raster', regionId: r.id, aquiferId: m.aquiferId, rasterCode: m.code, rasterDataType: m.dataType });
+        }
+        const models = modelsByRegion.get(r.id) || [];
+        for (const m of models) {
+          items.push({ key: `model-${m.regionId}-${m.code}`, type: 'model', regionId: r.id, aquiferId: m.aquiferId, modelCode: m.code });
+        }
+        continue;
+      }
+      const regionAquifers = aquifersByRegion.get(r.id) || [];
+      for (const a of regionAquifers) {
+        items.push({ key: `aquifer-${a.id}`, type: 'aquifer', regionId: r.id, aquiferId: a.id });
+        if (expandedAquiferIds.has(a.id)) {
+          const rasters = rastersByAquifer.get(`${r.id}:${a.id}`) || [];
+          for (const m of rasters) {
+            items.push({ key: `raster-${m.regionId}-${m.dataType}_${m.code}`, type: 'raster', regionId: r.id, aquiferId: a.id, rasterCode: m.code, rasterDataType: m.dataType });
+          }
+          const models = modelsByAquifer.get(`${r.id}:${a.id}`) || [];
+          for (const m of models) {
+            items.push({ key: `model-${m.regionId}-${m.code}`, type: 'model', regionId: r.id, aquiferId: a.id, modelCode: m.code });
           }
         }
       }
     }
     return items;
-  }, [regions, expandedRegionIds, expandedAquiferIds, aquifersByRegion, rastersByAquifer, modelsByAquifer]);
+  }, [regions, expandedRegionIds, expandedAquiferIds, aquifersByRegion, rastersByAquifer, modelsByAquifer, rastersByRegion, modelsByRegion]);
 
   // --- Effects ---
 
@@ -348,16 +381,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       if (idx < 0) return;
       const item = flatItems[idx];
       if (item.type === 'region') {
-        const r = regions.find(rr => rr.id === item.regionId);
-        if (r && !r.singleUnit) {
-          if (expandedRegionIds.has(item.regionId)) {
-            // Already expanded, move to first child
-            if (idx + 1 < flatItems.length && flatItems[idx + 1].regionId === item.regionId && flatItems[idx + 1].type === 'aquifer') {
-              focusItem(idx + 1);
-            }
-          } else {
-            handleRegionChevronClick(item.regionId);
+        if (expandedRegionIds.has(item.regionId)) {
+          // Already expanded, move to first child (aquifer, or raster/model for single-unit)
+          if (idx + 1 < flatItems.length && flatItems[idx + 1].regionId === item.regionId && flatItems[idx + 1].type !== 'region') {
+            focusItem(idx + 1);
           }
+        } else {
+          handleRegionChevronClick(item.regionId);
         }
       } else if (item.type === 'aquifer') {
         if (expandedAquiferIds.has(item.aquiferId!)) {
@@ -911,7 +941,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     const isConfirming = confirmDelete === `region-${r.id}`;
     const isMenuOpen = menuOpen === `region-${r.id}`;
     const regionAquifers = aquifersByRegion.get(r.id) || [];
-    const hasChildren = !r.singleUnit && regionAquifers.length > 0;
+    const regionRasters = r.singleUnit ? (rastersByRegion.get(r.id) || []) : [];
+    const regionModels = r.singleUnit ? (modelsByRegion.get(r.id) || []) : [];
+    const hasChildren = r.singleUnit
+      ? (regionRasters.length > 0 || regionModels.length > 0)
+      : regionAquifers.length > 0;
     const isExpanded = expandedRegionIds.has(r.id);
     const itemKey = `region-${r.id}`;
     const isFocused = focusedItemKey === itemKey;
@@ -1045,10 +1079,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
         </div>
-        {/* Aquifer children */}
+        {/* Children: aquifers, or for single-unit regions, rasters/models directly */}
         {isExpanded && hasChildren && (
-          <div>
-            {regionAquifers.map(a => renderAquiferRow(a, r.id))}
+          <div className={r.singleUnit ? 'space-y-0' : undefined}>
+            {r.singleUnit
+              ? <>
+                  {regionRasters.map(m => renderRasterRow(m))}
+                  {regionModels.map(m => renderModelRow(m))}
+                </>
+              : regionAquifers.map(a => renderAquiferRow(a, r.id))}
           </div>
         )}
       </div>
