@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, Loader2 } from 'lucide-react';
 import { DataType } from '../../types';
-import { freshFetch, saveFiles } from '../../services/importUtils';
+import { freshFetch, saveFiles, parseCSV, toCsv, WELLS_CSV_HEADERS } from '../../services/importUtils';
 import ConfirmDialog from './ConfirmDialog';
 
 interface AquiferEditorProps {
@@ -89,30 +89,25 @@ const AquiferEditor: React.FC<AquiferEditorProps> = ({ regionId, regionName, dat
       const geojsonContent = JSON.stringify({ type: 'FeatureCollection', features }, null, 2);
       setDeleteProgress(20);
 
-      // Load wells.csv and filter out wells for this aquifer
-      let wellsCsvContent = 'well_id,well_name,lat,long,gse,aquifer_id,aquifer_name';
+      // Load wells.csv and filter out wells for this aquifer. Must go
+      // through the real CSV parser — naive split(',') shifts columns on
+      // quoted names containing commas (common in USGS site names) and
+      // deletes the wrong wells.
+      let wellsCsvContent = toCsv(WELLS_CSV_HEADERS, []);
       const deletedWellIds = new Set<string>();
       try {
         const wRes = await freshFetch(`/data/${regionId}/wells.csv`);
         if (wRes.ok) {
-          const text = await wRes.text();
-          const lines = text.split('\n').filter(l => l.trim());
-          if (lines.length > 0) {
-            const header = lines[0];
-            const cols = header.split(',').map(c => c.trim());
-            const aqIdx = cols.indexOf('aquifer_id');
-            const wellIdIdx = cols.indexOf('well_id');
-            const kept: string[] = [];
-            for (let i = 1; i < lines.length; i++) {
-              const parts = lines[i].split(',');
-              if (aqIdx >= 0 && String(parts[aqIdx]).replace(/"/g, '').trim() === aquiferId) {
-                if (wellIdIdx >= 0) deletedWellIds.add(String(parts[wellIdIdx]).replace(/"/g, '').trim());
-              } else {
-                kept.push(lines[i]);
-              }
+          const { headers, rows } = parseCSV(await wRes.text());
+          const kept: Record<string, string>[] = [];
+          for (const r of rows) {
+            if ((r.aquifer_id || '') === aquiferId) {
+              if (r.well_id) deletedWellIds.add(r.well_id);
+            } else {
+              kept.push(r);
             }
-            wellsCsvContent = [header, ...kept].join('\n');
           }
+          wellsCsvContent = toCsv(headers.length > 0 ? headers : WELLS_CSV_HEADERS, kept);
         }
       } catch {}
       setDeleteProgress(40);
@@ -123,23 +118,13 @@ const AquiferEditor: React.FC<AquiferEditorProps> = ({ regionId, regionName, dat
         try {
           const mRes = await freshFetch(`/data/${regionId}/data_${dt.code}.csv`);
           if (mRes.ok) {
-            const text = await mRes.text();
-            const lines = text.split('\n').filter(l => l.trim());
-            if (lines.length > 0) {
-              const header = lines[0];
-              const cols = header.split(',').map(c => c.trim());
-              const wellIdIdx = cols.indexOf('well_id');
-              const aqIdx = cols.indexOf('aquifer_id');
-              const kept: string[] = [];
-              for (let i = 1; i < lines.length; i++) {
-                const parts = lines[i].split(',');
-                const wId = wellIdIdx >= 0 ? String(parts[wellIdIdx]).replace(/"/g, '').trim() : '';
-                const aId = aqIdx >= 0 ? String(parts[aqIdx]).replace(/"/g, '').trim() : '';
-                // Remove if well was deleted OR aquifer matches
-                if (deletedWellIds.has(wId) || aId === aquiferId) continue;
-                kept.push(lines[i]);
-              }
-              dataFiles.push({ path: `${regionId}/data_${dt.code}.csv`, content: [header, ...kept].join('\n') });
+            const { headers, rows } = parseCSV(await mRes.text());
+            if (headers.length > 0) {
+              // Remove if well was deleted OR aquifer matches
+              const kept = rows.filter(r =>
+                !deletedWellIds.has(r.well_id || '') && (r.aquifer_id || '') !== aquiferId
+              );
+              dataFiles.push({ path: `${regionId}/data_${dt.code}.csv`, content: toCsv(headers, kept) });
             }
           }
         } catch {}

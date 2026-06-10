@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Layers, Map as MapIcon, Database, ChevronRight, Activity, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
 import { Region, Aquifer, Well, Measurement, DataType, RasterAnalysisResult, RasterAnalysisMeta, CrossSectionProfile, ImputationModelResult, ImputationModelMeta } from './types';
 import { loadAllData } from './services/dataLoader';
-import { freshFetch } from './services/importUtils';
+import { freshFetch, toCsv, escapeCsvField, WELLS_CSV_HEADERS } from './services/importUtils';
 import { slugify } from './utils/strings';
 import MapView, { MapViewHandle } from './components/MapView';
 import Sidebar from './components/Sidebar';
@@ -992,22 +992,29 @@ const App: React.FC = () => {
     );
     const geojsonContent = JSON.stringify({ type: 'FeatureCollection', features }, null, 2);
     // Wells CSV
-    const wellsCsvHeader = 'well_id,well_name,lat,long,gse,aquifer_id,aquifer_name';
-    const wellsCsvRows = regionWells.map(w =>
-      `${w.id},"${w.name}",${w.lat},${w.lng},${w.gse},${w.aquiferId},"${w.aquiferName}"`
-    );
-    const wellsCsvContent = [wellsCsvHeader, ...wellsCsvRows].join('\n');
+    const wellsCsvContent = toCsv(WELLS_CSV_HEADERS, regionWells.map(w => ({
+      well_id: w.id,
+      well_name: w.name,
+      lat: String(w.lat),
+      long: String(w.lng),
+      gse: String(w.gse),
+      aquifer_id: w.aquiferId,
+      aquifer_name: w.aquiferName,
+    })));
 
     // Rebuild data CSVs per data type
     const regionDataTypes = region?.effectiveDataTypes || [{ code: 'wte', name: 'Water Table Elevation', unit: 'ft' }];
     const dataFiles: { path: string; content: string }[] = [];
     for (const dt of regionDataTypes) {
       const dtMeasurements = regionMeasurements.filter(m => m.dataType === dt.code);
-      const header = 'well_id,well_name,date,value,aquifer_id';
-      const rows = dtMeasurements.map(m =>
-        `${m.wellId},"${m.wellName}",${m.date},${m.value},${m.aquiferId}`
-      );
-      dataFiles.push({ path: `${regionId}/data_${dt.code}.csv`, content: [header, ...rows].join('\n') });
+      const content = toCsv(['well_id', 'well_name', 'date', 'value', 'aquifer_id'], dtMeasurements.map(m => ({
+        well_id: m.wellId,
+        well_name: m.wellName,
+        date: m.date,
+        value: String(m.value),
+        aquifer_id: m.aquiferId,
+      })));
+      dataFiles.push({ path: `${regionId}/data_${dt.code}.csv`, content });
     }
 
     await fetch('/api/save-data', {
@@ -1067,7 +1074,7 @@ const App: React.FC = () => {
       ]);
 
     const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .map(row => row.map(cell => escapeCsvField(cell)).join(','))
       .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1110,11 +1117,13 @@ const App: React.FC = () => {
     // Write the CSV for the active data type
     const dtCode = selectedDataType;
     const regionMeasurements = updatedMeasurements.filter(m => m.regionId === regionId && m.dataType === dtCode);
-    const header = 'well_id,well_name,date,value,aquifer_id';
-    const rows = regionMeasurements.map(m =>
-      `${m.wellId},"${m.wellName}",${m.date},${m.value},${m.aquiferId}`
-    );
-    const csvContent = [header, ...rows].join('\n');
+    const csvContent = toCsv(['well_id', 'well_name', 'date', 'value', 'aquifer_id'], regionMeasurements.map(m => ({
+      well_id: m.wellId,
+      well_name: m.wellName,
+      date: m.date,
+      value: String(m.value),
+      aquifer_id: m.aquiferId,
+    })));
     await fetch('/api/save-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

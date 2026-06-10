@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, RefreshCw } from 'lucide-react';
-import { processUploadedFile, UploadedFile, saveFiles, deleteFile, isInUS, assignWellToAquifer, parseCSV, freshFetch } from '../../services/importUtils';
+import { processUploadedFile, UploadedFile, saveFiles, deleteFile, isInUS, assignWellToAquifer, parseCSV, toCsv, WELLS_CSV_HEADERS, freshFetch } from '../../services/importUtils';
 import { fetchUSGSWells, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { fetchGseBatch } from '../../services/gseLookup';
 import { SampleCoord } from '../../services/reprojection';
@@ -438,21 +438,22 @@ const WellImporter: React.FC<WellImporterProps> = ({
       // Reproject lat/long through the selected CRS so the CSV always
       // stores WGS84 values, even when the user's source data was in a
       // projected coordinate system (e.g. JAD2001 Jamaica Metric Grid).
+      const aquiferNameById = new Map<string, string>(aquiferList.map(a => [a.id, String(a.name || '')]));
       const processedWells = rows.map(w => {
         const { lat, lng } = parseRowCoords(w[latCol], w[longCol]);
+        const aquiferId = resolveAquiferId(w);
         return {
           well_id: w[wellIdCol] || '',
           well_name: wellNameCol ? w[wellNameCol] || '' : '',
           lat: lat !== undefined ? String(lat) : '',
           long: lng !== undefined ? String(lng) : '',
           gse: gseCol ? w[gseCol] || '' : (gseValues.get(w[wellIdCol])?.toString() ?? ''),
-          aquifer_id: resolveAquiferId(w),
+          aquifer_id: aquiferId,
+          aquifer_name: aquiferNameById.get(aquiferId) || '',
         };
       }).filter(w => w.well_id && w.lat && w.long);
 
       const isAquiferScoped = dataSource === 'usgs' && usgsScope === 'aquifer' && usgsScopeAquiferId;
-      const formatRow = (w: Record<string, string>) =>
-        `${w.well_id},"${w.well_name || ''}",${w.lat},${w.long},${w.gse || ''},${w.aquifer_id || ''}`;
 
       if (isAquiferScoped) {
         // Aquifer-scoped: always merge with other aquifers' wells
@@ -476,11 +477,7 @@ const WellImporter: React.FC<WellImporterProps> = ({
         const existingIds = new Set(keptExisting.map(r => r.well_id));
         const toAdd = processedWells.filter(w => !existingIds.has(w.well_id));
 
-        const allWells = [
-          ...keptExisting.map(r => formatRow(r)),
-          ...toAdd.map(w => formatRow(w))
-        ];
-        const csv = 'well_id,well_name,lat,long,gse,aquifer_id\n' + allWells.join('\n');
+        const csv = toCsv(WELLS_CSV_HEADERS, [...keptExisting, ...toAdd]);
         await saveFiles([{ path: `${regionId}/wells.csv`, content: csv }]);
       } else if (importMode === 'append' && existingWellCount > 0) {
         // Load existing wells, skip duplicates
@@ -496,11 +493,7 @@ const WellImporter: React.FC<WellImporterProps> = ({
         const toAdd = processedWells.filter(w => !existingIds.has(w.well_id));
 
         // Merge: keep existing + add new
-        const allWells = [
-          ...existingRows.map(r => formatRow(r)),
-          ...toAdd.map(w => formatRow(w))
-        ];
-        const csv = 'well_id,well_name,lat,long,gse,aquifer_id\n' + allWells.join('\n');
+        const csv = toCsv(WELLS_CSV_HEADERS, [...existingRows, ...toAdd]);
         await saveFiles([{ path: `${regionId}/wells.csv`, content: csv }]);
       } else {
         // Region-wide replace: delete measurements then write
@@ -518,8 +511,7 @@ const WellImporter: React.FC<WellImporterProps> = ({
           } catch {}
         }
 
-        const csv = 'well_id,well_name,lat,long,gse,aquifer_id\n' +
-          processedWells.map(w => formatRow(w)).join('\n');
+        const csv = toCsv(WELLS_CSV_HEADERS, processedWells);
         await saveFiles([{ path: `${regionId}/wells.csv`, content: csv }]);
       }
       onComplete();

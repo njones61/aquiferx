@@ -66,23 +66,87 @@ export function splitCSVLine(line: string, delimiter: string): string[] {
   return fields;
 }
 
+// Tokenize CSV text into records. Parses character-by-character over the
+// whole text (not line-by-line) so quoted fields may contain delimiters
+// and newlines. Delimiter (comma vs tab) is detected from the first line.
+function parseCsvRecords(text: string): string[][] {
+  if (!text) return [];
+  const firstLineEnd = text.indexOf('\n');
+  const firstLine = firstLineEnd === -1 ? text : text.slice(0, firstLineEnd);
+  const delimiter = firstLine.includes('\t') ? '\t' : ',';
+
+  const records: string[][] = [];
+  let fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  const pushField = () => { fields.push(current.trim()); current = ''; };
+  const pushRecord = () => {
+    pushField();
+    // Skip blank records (blank lines, trailing newline)
+    if (fields.length > 1 || fields[0] !== '') records.push(fields);
+    fields = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { current += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      pushField();
+    } else if (ch === '\n') {
+      pushRecord();
+    } else if (ch === '\r') {
+      if (text[i + 1] !== '\n') pushRecord(); // bare \r is a line break; \r\n handled by \n
+    } else {
+      current += ch;
+    }
+  }
+  if (current !== '' || fields.length > 0) pushRecord();
+  return records;
+}
+
 // Parse CSV text into { headers, rows }
 export function parseCSV(text: string): { headers: string[]; rows: Record<string, string>[] } {
-  const lines = text.split('\n').filter(line => line.trim());
-  if (lines.length < 1) return { headers: [], rows: [] };
+  const records = parseCsvRecords(text);
+  if (records.length < 1) return { headers: [], rows: [] };
 
-  const delimiter = lines[0].includes('\t') ? '\t' : ',';
-  const headers = splitCSVLine(lines[0], delimiter);
-
-  const rows = lines.slice(1).map(line => {
-    const values = splitCSVLine(line, delimiter);
+  const headers = records[0];
+  const rows = records.slice(1).map(values => {
     const row: Record<string, string> = {};
-    headers.forEach((h, i) => { row[h] = values[i]?.trim() || ''; });
+    headers.forEach((h, i) => { row[h] = values[i] || ''; });
     return row;
   });
 
   return { headers, rows };
 }
+
+// Quote a field for CSV output when it contains a delimiter, quote, or
+// line break
+export function escapeCsvField(value: string): string {
+  return /[",\t\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+// Serialize rows to CSV. The single writer for all importers/editors —
+// per-component string concatenation is where quoting bugs come from.
+export function toCsv(headers: string[], rows: Record<string, string>[]): string {
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    lines.push(headers.map(h => escapeCsvField(row[h] ?? '')).join(','));
+  }
+  return lines.join('\n');
+}
+
+// Canonical wells.csv column set — every writer must use this so the
+// schema can't drift between importers
+export const WELLS_CSV_HEADERS = ['well_id', 'well_name', 'lat', 'long', 'gse', 'aquifer_id', 'aquifer_name'];
 
 // Parse date based on format
 export function parseDate(dateStr: string, format: string): string {

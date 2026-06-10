@@ -1,7 +1,6 @@
-import shp from 'shpjs';
 import polylabel from 'polylabel';
 import { Region, Aquifer, Well, Measurement, RegionMeta, RasterAnalysisMeta, ImputationModelMeta, DataType } from '../types';
-import { freshFetch } from './importUtils';
+import { freshFetch, parseCSV } from './importUtils';
 import { loadCatalog, computeEffectiveDataTypes } from './catalog';
 
 interface DataFolder {
@@ -103,75 +102,6 @@ function computeLabelPoint(geojson: any, bounds: [number, number, number, number
 
   const result = polylabel(bestPoly, 0.001);
   return [result[1], result[0]]; // [lat, lng]
-}
-
-// Split a CSV line respecting quoted fields
-export function splitCSVLine(line: string, delimiter: string): string[] {
-  const fields: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (i + 1 < line.length && line[i + 1] === '"') {
-          current += '"';
-          i++; // skip escaped quote
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        current += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === delimiter) {
-        fields.push(current.trim());
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-  }
-  fields.push(current.trim());
-  return fields;
-}
-
-// Parse CSV text into rows
-export function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.split('\n').filter(line => line.trim());
-  if (lines.length < 2) return [];
-
-  // Detect delimiter (comma or tab)
-  const firstLine = lines[0];
-  const delimiter = firstLine.includes('\t') ? '\t' : ',';
-
-  const headers = splitCSVLine(lines[0], delimiter);
-  const rows: Record<string, string>[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = splitCSVLine(lines[i], delimiter);
-    const row: Record<string, string> = {};
-    headers.forEach((header, idx) => {
-      row[header] = values[idx]?.trim() || '';
-    });
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-// Load shapefile from URL - shpjs handles fetching all components (.shp, .dbf, .prj, .cpg)
-async function loadShapefile(shpPath: string): Promise<any> {
-  // shpjs accepts a URL string and automatically fetches .shp, .dbf, .prj, .cpg files
-  return shp(shpPath);
-}
-
-// Load GeoJSON file
-async function loadGeoJSON(path: string): Promise<any> {
-  const response = await fetch(path);
-  return response.json();
 }
 
 // Load region manifest via API
@@ -312,7 +242,7 @@ export async function loadWells(regionPath: string, regionId: string): Promise<W
     if (!response.ok) return wells;
 
     const text = await response.text();
-    const rows = parseCSV(text);
+    const { rows } = parseCSV(text);
 
     for (const row of rows) {
       // Standard column names: well_id, long, lat, aquifer_id
@@ -354,7 +284,7 @@ export async function loadMeasurements(regionPath: string, regionId: string, dat
       if (!response.ok) continue;
 
       const text = await response.text();
-      const rows = parseCSV(text);
+      const { rows } = parseCSV(text);
 
       for (const row of rows) {
         const wellId = row['well_id'] || '';

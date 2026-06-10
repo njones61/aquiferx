@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, Calendar, MapPin, Wand2, BookOpen, FlaskConical } from 'lucide-react';
-import { processUploadedFile, UploadedFile, saveFiles, parseDate, detectDateFormat, parseCSV, isInUS, freshFetch, assignWellToAquifer, DATE_FORMATS } from '../../services/importUtils';
+import { processUploadedFile, UploadedFile, saveFiles, parseDate, detectDateFormat, parseCSV, toCsv, WELLS_CSV_HEADERS, isInUS, freshFetch, assignWellToAquifer, DATE_FORMATS } from '../../services/importUtils';
 import { fetchUSGSMeasurements, validateUSGSMeasurements, USGSDataQualityReport, USGSMeasurement, USGSDataSpan, computeDataSpan, filterByDateRange, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { loadCatalog } from '../../services/catalog';
 import CatalogBrowser from '../CatalogBrowser';
@@ -1191,8 +1191,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
             processed = await mergeWithExisting(typeCode, processed);
           }
 
-          const csv = 'well_id,date,value,aquifer_id\n' +
-            processed.map(m => `${m.well_id},${m.date},${m.value},${m.aquifer_id}`).join('\n');
+          const csv = toCsv(['well_id', 'date', 'value', 'aquifer_id'], processed);
           filesToSave.push({ path: `${regionId}/data_${typeCode}.csv`, content: csv });
         }
       } else {
@@ -1243,8 +1242,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
             processed = await mergeWithExisting(typeCode, processed);
           }
 
-          const csv = 'well_id,date,value,aquifer_id\n' +
-            processed.map(m => `${m.well_id},${m.date},${m.value},${m.aquifer_id}`).join('\n');
+          const csv = toCsv(['well_id', 'date', 'value', 'aquifer_id'], processed);
           filesToSave.push({ path: `${regionId}/data_${typeCode}.csv`, content: csv });
         }
       }
@@ -1262,23 +1260,24 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
 
       // --- Persist new wells (if any) by appending to wells.csv ---
       if (newWellRecords.length > 0) {
-        // Read existing wells.csv to preserve header/columns; fall back to building from existingWellsFull
-        let existingText = '';
+        let existingRows: Record<string, string>[] = [];
         try {
           const res = await freshFetch(`/data/${regionId}/wells.csv`);
-          if (res.ok) existingText = await res.text();
+          if (res.ok) existingRows = parseCSV(await res.text()).rows;
         } catch {}
-        const header = 'well_id,well_name,lat,long,gse,aquifer_id,aquifer_name';
-        const existingLines = existingText.trim().split('\n').filter(Boolean);
-        const bodyLines = existingLines.length > 0 ? existingLines.slice(1) : [];
         const aquiferNameById = new Map<string, string>(aquiferList.map(a => [a.id, a.name]));
-        const newLines = newWellRecords.map(w => {
-          const aquiferName = aquiferNameById.get(w.aquifer_id) || '';
-          return `${w.well_id},"${(w.well_name || '').replace(/"/g, '""')}",${w.lat},${w.lng},${w.gse},${w.aquifer_id},"${aquiferName.replace(/"/g, '""')}"`;
-        });
+        const newRows = newWellRecords.map(w => ({
+          well_id: w.well_id,
+          well_name: w.well_name || '',
+          lat: String(w.lat),
+          long: String(w.lng),
+          gse: String(w.gse ?? ''),
+          aquifer_id: w.aquifer_id,
+          aquifer_name: aquiferNameById.get(w.aquifer_id) || '',
+        }));
         filesToSave.push({
           path: `${regionId}/wells.csv`,
-          content: [header, ...bodyLines, ...newLines].join('\n'),
+          content: toCsv(WELLS_CSV_HEADERS, [...existingRows, ...newRows]),
         });
       }
 
