@@ -9,7 +9,8 @@ import {
   VariogramModel, KrigingRangeMode, IdwNodalFunction, IdwNeighborMode, SpatialMethod,
   ImputationModelMeta,
 } from '../types';
-import { runRasterAnalysis, RasterPipelineInput } from '../services/rasterAnalysis';
+import { RasterPipelineInput } from '../services/rasterAnalysis';
+import { startRasterAnalysis, AnalysisRun } from '../services/analysisClient';
 import { isPipelineCancelled } from '../services/pipelineCancel';
 import { slugify } from '../utils/strings';
 import PchipPreviewCanvas from './PchipPreviewCanvas';
@@ -39,6 +40,7 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
   const [result, setResult] = useState<RasterAnalysisResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const cancelledRef = useRef(false);
+  const runRef = useRef<AnalysisRun<RasterAnalysisResult> | null>(null);
 
   // --- Temporal options (Step 1) ---
   const [resolution, setResolution] = useState(50);
@@ -291,17 +293,24 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
     };
 
     try {
-      const result = await runRasterAnalysis(
-        input, dataType.code, aquifer, region, wells,
-        measurements.filter(m => wellKeySet.has(`${m.regionId}:${m.aquiferId}:${m.wellId}`)),
+      const run = startRasterAnalysis(
+        {
+          input,
+          dataType: dataType.code,
+          aquifer,
+          region,
+          wells,
+          measurements: measurements.filter(m => wellKeySet.has(`${m.regionId}:${m.aquiferId}:${m.wellId}`)),
+        },
         (stepText, pct) => {
           if (!cancelledRef.current) {
             setProgressText(stepText);
             setProgressPct(pct);
           }
-        },
-        () => cancelledRef.current
+        }
       );
+      runRef.current = run;
+      const result = await run.promise;
       if (!cancelledRef.current) {
         setResult(result);
         setStep('complete');
@@ -312,12 +321,15 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
       console.error('Raster analysis failed:', err);
       setErrorMessage(err instanceof Error ? err.message : String(err));
       setStep(3);
+    } finally {
+      runRef.current = null;
     }
   };
 
   const handleCancel = () => {
     if (step === 'running') {
       cancelledRef.current = true;
+      runRef.current?.cancel();
     }
     setStep(1);
     setProgressPct(0);
@@ -409,7 +421,7 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
               </div>
             )}
             <button
-              onClick={() => { cancelledRef.current = true; onClose(); }}
+              onClick={() => { cancelledRef.current = true; runRef.current?.cancel(); onClose(); }}
               className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
             >
               <X size={20} className="text-slate-400" />

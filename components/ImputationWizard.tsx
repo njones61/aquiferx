@@ -5,7 +5,8 @@ import {
   ResponsiveContainer, ReferenceLine, ReferenceArea, Cell,
 } from 'recharts';
 import { Aquifer, Region, Well, Measurement, ImputationModelResult } from '../types';
-import { runImputationPipeline, ImputationPipelineInput } from '../services/imputationPipeline';
+import { ImputationPipelineInput } from '../services/imputationPipeline';
+import { startImputation, AnalysisRun } from '../services/analysisClient';
 import { isPipelineCancelled } from '../services/pipelineCancel';
 import { slugify } from '../utils/strings';
 import PchipPreviewCanvas from './PchipPreviewCanvas';
@@ -35,6 +36,7 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
   const [result, setResult] = useState<ImputationModelResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const cancelledRef = useRef(false);
+  const runRef = useRef<AnalysisRun<ImputationModelResult> | null>(null);
 
   // --- Log state ---
   const [logMessages, setLogMessages] = useState<string[]>([]);
@@ -197,9 +199,14 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
 
     try {
       const logAccumulator: string[] = [];
-      const result = await runImputationPipeline(
-        input, aquifer, region, wells,
-        measurements.filter(m => wellKeySet.has(`${m.regionId}:${m.aquiferId}:${m.wellId}`)),
+      const run = startImputation(
+        {
+          input,
+          aquifer,
+          region,
+          wells,
+          measurements: measurements.filter(m => wellKeySet.has(`${m.regionId}:${m.aquiferId}:${m.wellId}`)),
+        },
         (msg) => {
           if (!cancelledRef.current) {
             logAccumulator.push(msg);
@@ -212,8 +219,9 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
             setProgressPct(pct);
           }
         },
-        () => cancelledRef.current,
       );
+      runRef.current = run;
+      const result = await run.promise;
 
       if (!cancelledRef.current) {
         result.log = logAccumulator;
@@ -226,12 +234,15 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
       console.error('Imputation failed:', err);
       setErrorMessage(err instanceof Error ? err.message : String(err));
       setStep(2);
+    } finally {
+      runRef.current = null;
     }
   };
 
   const handleCancel = () => {
     if (step === 'running') {
       cancelledRef.current = true;
+      runRef.current?.cancel();
     }
     setStep(1);
     setProgressPct(0);
@@ -278,7 +289,7 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
               </div>
             )}
             <button
-              onClick={() => { cancelledRef.current = true; onClose(); }}
+              onClick={() => { cancelledRef.current = true; runRef.current?.cancel(); onClose(); }}
               className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
             >
               <X size={20} className="text-slate-400" />
