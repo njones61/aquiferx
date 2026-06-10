@@ -583,8 +583,8 @@ const App: React.FC = () => {
   }, []);
 
   const handleToggleCompareRaster = async (meta: RasterAnalysisMeta) => {
-    if (rasterResult && rasterResult.code === meta.code && rasterResult.dataType === meta.dataType && rasterResult.regionId === meta.regionId) return;
-    const existingIdx = compareRasterResults.findIndex(r => r.code === meta.code && r.dataType === meta.dataType && r.regionId === meta.regionId);
+    if (rasterResult && rasterResult.code === meta.code && rasterResult.dataType === meta.dataType && rasterResult.regionId === meta.regionId && rasterResult.aquiferId === meta.aquiferId) return;
+    const existingIdx = compareRasterResults.findIndex(r => r.code === meta.code && r.dataType === meta.dataType && r.regionId === meta.regionId && r.aquiferId === meta.aquiferId);
     if (existingIdx >= 0) {
       setCompareRasterResults(prev => prev.filter((_, i) => i !== existingIdx));
       return;
@@ -607,11 +607,11 @@ const App: React.FC = () => {
 
   const handleDeleteRaster = async (meta: RasterAnalysisMeta) => {
     // Unload if this is the active raster
-    if (rasterResult?.code === meta.code && rasterResult?.dataType === meta.dataType) {
+    if (rasterResult?.code === meta.code && rasterResult?.dataType === meta.dataType && rasterResult?.regionId === meta.regionId && rasterResult?.aquiferId === meta.aquiferId) {
       setRasterResult(null);
     }
     // Remove from metadata list
-    setRasterMeta(prev => prev.filter(m => !(m.code === meta.code && m.dataType === meta.dataType && m.regionId === meta.regionId)));
+    setRasterMeta(prev => prev.filter(m => !(m.code === meta.code && m.dataType === meta.dataType && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId)));
     // Delete the file on disk
     try {
       await fetch('/api/delete-file', {
@@ -639,12 +639,12 @@ const App: React.FC = () => {
       });
       if (res.ok) {
         setRasterMeta(prev => prev.map(m =>
-          m.code === meta.code && m.dataType === meta.dataType && m.regionId === meta.regionId
+          m.code === meta.code && m.dataType === meta.dataType && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId
             ? { ...m, title: newTitle, code: newCode, filePath: newPath }
             : m
         ));
         // Update active raster if it was the renamed one
-        if (rasterResult?.code === meta.code && rasterResult?.dataType === meta.dataType && rasterResult?.regionId === meta.regionId) {
+        if (rasterResult?.code === meta.code && rasterResult?.dataType === meta.dataType && rasterResult?.regionId === meta.regionId && rasterResult?.aquiferId === meta.aquiferId) {
           setRasterResult(prev => prev ? { ...prev, title: newTitle, code: newCode } : null);
         }
       }
@@ -699,10 +699,10 @@ const App: React.FC = () => {
   };
 
   const handleDeleteModel = async (meta: ImputationModelMeta) => {
-    if (selectedModel?.code === meta.code) {
+    if (selectedModel?.code === meta.code && selectedModel?.regionId === meta.regionId && selectedModel?.aquiferId === meta.aquiferId) {
       setSelectedModel(null);
     }
-    setModelMeta(prev => prev.filter(m => !(m.code === meta.code && m.regionId === meta.regionId)));
+    setModelMeta(prev => prev.filter(m => !(m.code === meta.code && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId)));
     try {
       await fetch('/api/delete-file', {
         method: 'POST',
@@ -728,11 +728,11 @@ const App: React.FC = () => {
       });
       if (res.ok) {
         setModelMeta(prev => prev.map(m =>
-          m.code === meta.code && m.regionId === meta.regionId
+          m.code === meta.code && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId
             ? { ...m, title: newTitle, code: newCode, filePath: newPath }
             : m
         ));
-        if (selectedModel?.code === meta.code && selectedModel?.regionId === meta.regionId) {
+        if (selectedModel?.code === meta.code && selectedModel?.regionId === meta.regionId && selectedModel?.aquiferId === meta.aquiferId) {
           setSelectedModel(prev => prev ? { ...prev, title: newTitle, code: newCode } : null);
         }
       }
@@ -1258,8 +1258,8 @@ const App: React.FC = () => {
         onRenameAquifer={handleRenameAquifer}
         onDeleteAquifer={handleDeleteAquifer}
         rasterMeta={rasterMeta}
-        activeRasterCode={rasterResult ? `${rasterResult.dataType}_${rasterResult.code}` : null}
-        compareRasterCodes={compareRasterResults.map(r => `${r.dataType}_${r.code}`)}
+        activeRasterCode={rasterResult ? `${rasterResult.regionId}:${rasterResult.aquiferId}:${rasterResult.dataType}_${rasterResult.code}` : null}
+        compareRasterCodes={compareRasterResults.map(r => `${r.regionId}:${r.aquiferId}:${r.dataType}_${r.code}`)}
         loadingRasterCode={loadingRasterCode}
         onLoadRaster={handleLoadRaster}
         onUnloadRaster={handleUnloadRaster}
@@ -1268,7 +1268,7 @@ const App: React.FC = () => {
         onRenameRaster={handleRenameRaster}
         onGetRasterInfo={handleGetRasterInfo}
         modelMeta={modelMeta}
-        activeModelCode={selectedModel?.code || null}
+        activeModelCode={selectedModel ? `${selectedModel.regionId}:${selectedModel.aquiferId}:${selectedModel.code}` : null}
         loadingModelCode={loadingModelCode}
         onLoadModel={handleLoadModel}
         onUnloadModel={handleUnloadModel}

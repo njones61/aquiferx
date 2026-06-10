@@ -37,6 +37,12 @@ interface SidebarProps {
   onGetModelInfo?: (meta: ImputationModelMeta) => void;
 }
 
+// Globally unique identity for raster/model entries. Codes alone collide
+// across aquifers — every basin's default kriging raster is "wte_kriging",
+// so a code-only active check lit up (and toggled) all of them at once.
+export const rasterMetaKey = (m: RasterAnalysisMeta) => `${m.regionId}:${m.aquiferId}:${m.dataType}_${m.code}`;
+export const modelMetaKey = (m: ImputationModelMeta) => `${m.regionId}:${m.aquiferId}:${m.code}`;
+
 type TreeItemType = 'region' | 'aquifer' | 'raster' | 'model';
 interface TreeItem {
   key: string;
@@ -165,11 +171,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         // Rasters/models render directly under the region (no aquifer row).
         const rasters = rastersByRegion.get(r.id) || [];
         for (const m of rasters) {
-          items.push({ key: `raster-${m.regionId}-${m.dataType}_${m.code}`, type: 'raster', regionId: r.id, aquiferId: m.aquiferId, rasterCode: m.code, rasterDataType: m.dataType });
+          items.push({ key: `raster-${m.regionId}-${m.aquiferId}-${m.dataType}_${m.code}`, type: 'raster', regionId: r.id, aquiferId: m.aquiferId, rasterCode: m.code, rasterDataType: m.dataType });
         }
         const models = modelsByRegion.get(r.id) || [];
         for (const m of models) {
-          items.push({ key: `model-${m.regionId}-${m.code}`, type: 'model', regionId: r.id, aquiferId: m.aquiferId, modelCode: m.code });
+          items.push({ key: `model-${m.regionId}-${m.aquiferId}-${m.code}`, type: 'model', regionId: r.id, aquiferId: m.aquiferId, modelCode: m.code });
         }
         continue;
       }
@@ -179,11 +185,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         if (expandedAquiferIds.has(a.id)) {
           const rasters = rastersByAquifer.get(`${r.id}:${a.id}`) || [];
           for (const m of rasters) {
-            items.push({ key: `raster-${m.regionId}-${m.dataType}_${m.code}`, type: 'raster', regionId: r.id, aquiferId: a.id, rasterCode: m.code, rasterDataType: m.dataType });
+            items.push({ key: `raster-${m.regionId}-${m.aquiferId}-${m.dataType}_${m.code}`, type: 'raster', regionId: r.id, aquiferId: a.id, rasterCode: m.code, rasterDataType: m.dataType });
           }
           const models = modelsByAquifer.get(`${r.id}:${a.id}`) || [];
           for (const m of models) {
-            items.push({ key: `model-${m.regionId}-${m.code}`, type: 'model', regionId: r.id, aquiferId: a.id, modelCode: m.code });
+            items.push({ key: `model-${m.regionId}-${m.aquiferId}-${m.code}`, type: 'model', regionId: r.id, aquiferId: a.id, modelCode: m.code });
           }
         }
       }
@@ -239,11 +245,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Track last-active raster per aquifer
   useEffect(() => {
     if (activeRasterCode) {
-      const meta = rasterMeta.find(m => `${m.dataType}_${m.code}` === activeRasterCode);
+      const meta = rasterMeta.find(m => rasterMetaKey(m) === activeRasterCode);
       if (meta) {
         setLastActiveRasterByAquifer(prev => {
           const next = new Map(prev);
-          next.set(meta.aquiferId, `${meta.dataType}_${meta.code}`);
+          next.set(`${meta.regionId}:${meta.aquiferId}`, rasterMetaKey(meta));
           return next;
         });
       }
@@ -340,9 +346,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       setExpandedAquiferIds(hasChildren ? new Set([a.id]) : new Set());
       // Restore last-active raster if none active
       if (!activeRasterCode && rasters.length > 0) {
-        const lastKey = lastActiveRasterByAquifer.get(a.id);
+        const lastKey = lastActiveRasterByAquifer.get(`${a.regionId}:${a.id}`);
         if (lastKey) {
-          const meta = rasters.find(m => `${m.dataType}_${m.code}` === lastKey);
+          const meta = rasters.find(m => rasterMetaKey(m) === lastKey);
           if (meta) onLoadRaster(meta);
         }
       }
@@ -432,18 +438,18 @@ const Sidebar: React.FC<SidebarProps> = ({
         const a = allAquifers.find(aa => aa.id === item.aquiferId);
         if (a) handleAquiferClick(a);
       } else if (item.type === 'raster') {
-        const m = rasterMeta.find(mm => mm.code === item.rasterCode && mm.dataType === item.rasterDataType && mm.regionId === item.regionId);
+        const m = rasterMeta.find(mm => mm.code === item.rasterCode && mm.dataType === item.rasterDataType && mm.regionId === item.regionId && (!item.aquiferId || mm.aquiferId === item.aquiferId));
         if (m) {
-          if (activeRasterCode === `${m.dataType}_${m.code}`) {
+          if (activeRasterCode === rasterMetaKey(m)) {
             onUnloadRaster();
           } else {
             onLoadRaster(m);
           }
         }
       } else if (item.type === 'model') {
-        const m = modelMeta.find(mm => mm.code === item.modelCode && mm.regionId === item.regionId);
+        const m = modelMeta.find(mm => mm.code === item.modelCode && mm.regionId === item.regionId && (!item.aquiferId || mm.aquiferId === item.aquiferId));
         if (m) {
-          if (activeModelCode === m.code) {
+          if (activeModelCode === modelMetaKey(m)) {
             onUnloadModel();
           } else {
             onLoadModel(m);
@@ -457,14 +463,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const renderRasterRow = (m: RasterAnalysisMeta) => {
     const rasterKey = `${m.dataType}_${m.code}`;
-    const isActive = activeRasterCode === rasterKey;
-    const isCompare = compareRasterCodes.includes(rasterKey);
+    const isActive = activeRasterCode === rasterMetaKey(m);
+    const isCompare = compareRasterCodes.includes(rasterMetaKey(m));
     const isLoading = loadingRasterCode === m.code;
-    const rasterMenuKey = `raster-${m.regionId}-${rasterKey}`;
+    const rasterMenuKey = `raster-${m.regionId}-${m.aquiferId}-${rasterKey}`;
     const isRasterMenuOpen = menuOpen === rasterMenuKey;
     const isRasterConfirming = confirmDelete === rasterMenuKey;
-    const isRasterEditing = editing === `raster-${m.regionId}-${rasterKey}`;
-    const itemKey = `raster-${m.regionId}-${rasterKey}`;
+    const isRasterEditing = editing === `raster-${m.regionId}-${m.aquiferId}-${rasterKey}`;
+    const itemKey = `raster-${m.regionId}-${m.aquiferId}-${rasterKey}`;
     const isFocused = focusedItemKey === itemKey;
     const displayTitle = `${m.dataType}_${m.title}`;
 
@@ -593,7 +599,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={() => {
                   setMenuOpen(null);
-                  setEditing(`raster-${m.regionId}-${m.code}`);
+                  setEditing(`raster-${m.regionId}-${m.aquiferId}-${rasterKey}`);
                   setEditValue(m.title);
                 }}
                 className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
@@ -636,13 +642,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const renderModelRow = (m: ImputationModelMeta) => {
-    const isActive = activeModelCode === m.code;
+    const isActive = activeModelCode === modelMetaKey(m);
     const isModelLoading = loadingModelCode === m.code;
-    const modelMenuKey = `model-${m.regionId}-${m.code}`;
+    const modelMenuKey = `model-${m.regionId}-${m.aquiferId}-${m.code}`;
     const isModelMenuOpen = menuOpen === modelMenuKey;
     const isModelConfirming = confirmDelete === modelMenuKey;
-    const isModelEditing = editing === `model-${m.regionId}-${m.code}`;
-    const itemKey = `model-${m.regionId}-${m.code}`;
+    const isModelEditing = editing === `model-${m.regionId}-${m.aquiferId}-${m.code}`;
+    const itemKey = `model-${m.regionId}-${m.aquiferId}-${m.code}`;
     const isFocused = focusedItemKey === itemKey;
 
     if (isModelConfirming) {
@@ -761,7 +767,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={() => {
                   setMenuOpen(null);
-                  setEditing(`model-${m.regionId}-${m.code}`);
+                  setEditing(`model-${m.regionId}-${m.aquiferId}-${m.code}`);
                   setEditValue(m.title);
                 }}
                 className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
