@@ -273,14 +273,12 @@ const App: React.FC = () => {
   const chartPanelRef = useRef<HTMLDivElement>(null);
 
   // Refs for async handlers to avoid stale closures after await
+  const selectedRegionRef = useRef(selectedRegion);
+  selectedRegionRef.current = selectedRegion;
   const selectedAquiferRef = useRef(selectedAquifer);
   selectedAquiferRef.current = selectedAquifer;
   const selectedDataTypeRef = useRef(selectedDataType);
   selectedDataTypeRef.current = selectedDataType;
-  // Guards: prevent the aquifer-change effect from clearing state that a
-  // concurrent raster/model load is about to set
-  const loadingRasterRef = useRef(false);
-  const loadingModelRef = useRef(false);
 
   // Divider drag handlers — direct DOM manipulation during drag to avoid full re-renders
   const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
@@ -331,9 +329,14 @@ const App: React.FC = () => {
     });
   };
 
-  // Reset selectedDataType when region changes
+  // Reset selectedDataType when the region changes — but keep it when the
+  // new region also has that type (e.g. a cross-region raster click that
+  // just synced the selector to the raster's data type)
   useEffect(() => {
-    setSelectedDataType('wte');
+    setSelectedDataType(prev =>
+      selectedRegion?.effectiveDataTypes.some(dt => dt.code === prev) ? prev : 'wte'
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRegion?.id]);
 
   // Clear trend analysis when region or data type changes
@@ -343,12 +346,20 @@ const App: React.FC = () => {
     setShowTrends(false);
   }, [selectedRegion?.id, selectedDataType]);
 
-  // Clear active raster overlay and model when aquifer changes — but not
-  // when the change was triggered by an in-flight raster/model load that is
-  // about to set new results (otherwise the effect races against the load).
+  // Clear the active raster/model when the aquifer changes, unless it
+  // belongs to the newly selected aquifer. Ownership comparison instead of
+  // a timing flag: when handleLoadRaster switches the aquifer and sets the
+  // result in one batch, a flag cleared in its finally block is already
+  // false by the time this effect runs, which wiped the just-loaded raster.
   useEffect(() => {
-    if (!loadingRasterRef.current) setRasterResult(null);
-    if (!loadingModelRef.current) setSelectedModel(null);
+    setRasterResult(prev =>
+      prev && selectedAquifer && prev.aquiferId === selectedAquifer.id && prev.regionId === selectedAquifer.regionId
+        ? prev : null
+    );
+    setSelectedModel(prev =>
+      prev && selectedAquifer && prev.aquiferId === selectedAquifer.id && prev.regionId === selectedAquifer.regionId
+        ? prev : null
+    );
   }, [selectedAquifer?.id]);
 
   // Auto-switch time series tab based on raster result
@@ -523,14 +534,18 @@ const App: React.FC = () => {
 
   // Load full raster analysis from file
   const handleLoadRaster = async (meta: RasterAnalysisMeta) => {
-    loadingRasterRef.current = true;
     setLoadingRasterCode(meta.code);
     try {
       const res = await fetch(`/data/${meta.filePath}`);
       if (res.ok) {
         const fullResult: RasterAnalysisResult = await res.json();
-        // Select the aquifer if not already selected (use ref for current value)
-        if (!selectedAquiferRef.current || selectedAquiferRef.current.id !== meta.aquiferId) {
+        // Switch the view to the raster's region/aquifer if needed (use
+        // refs for current values)
+        if (selectedRegionRef.current?.id !== meta.regionId) {
+          const region = regions.find(r => r.id === meta.regionId);
+          if (region) setSelectedRegion(region);
+        }
+        if (!selectedAquiferRef.current || selectedAquiferRef.current.id !== meta.aquiferId || selectedAquiferRef.current.regionId !== meta.regionId) {
           const aq = aquifers.find(a => a.id === meta.aquiferId && a.regionId === meta.regionId);
           if (aq) setSelectedAquifer(aq);
         }
@@ -543,7 +558,6 @@ const App: React.FC = () => {
     } catch (e) {
       console.error('Failed to load raster analysis:', e);
     } finally {
-      loadingRasterRef.current = false;
       setLoadingRasterCode(null);
     }
   };
@@ -651,13 +665,17 @@ const App: React.FC = () => {
 
   // --- Imputation model handlers ---
   const handleLoadModel = async (meta: ImputationModelMeta) => {
-    loadingModelRef.current = true;
     setLoadingModelCode(meta.code);
     try {
       const res = await fetch(`/data/${meta.filePath}`);
       if (res.ok) {
         const fullResult: ImputationModelResult = await res.json();
-        if (!selectedAquiferRef.current || selectedAquiferRef.current.id !== meta.aquiferId) {
+        // Switch the view to the model's region/aquifer if needed
+        if (selectedRegionRef.current?.id !== meta.regionId) {
+          const region = regions.find(r => r.id === meta.regionId);
+          if (region) setSelectedRegion(region);
+        }
+        if (!selectedAquiferRef.current || selectedAquiferRef.current.id !== meta.aquiferId || selectedAquiferRef.current.regionId !== meta.regionId) {
           const aq = aquifers.find(a => a.id === meta.aquiferId && a.regionId === meta.regionId);
           if (aq) setSelectedAquifer(aq);
         }
@@ -672,7 +690,6 @@ const App: React.FC = () => {
     } catch (e) {
       console.error('Failed to load model:', e);
     } finally {
-      loadingModelRef.current = false;
       setLoadingModelCode(null);
     }
   };
