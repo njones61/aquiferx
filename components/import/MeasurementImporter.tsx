@@ -814,6 +814,23 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
     setMatchSummary(null);
     setDataSpan(null);
     try {
+      // Size check before committing: a broad query can return hundreds
+      // of MB of CSV that must then be parsed on the main thread. Counts
+      // come from headers only, so this pre-flight is cheap.
+      const WQP_MAX_RESULTS = 250_000;
+      try {
+        const counts = await fetchWqpCounts(wqpQueryParams);
+        setWqpCounts(counts);
+        if (counts.resultCount > WQP_MAX_RESULTS) {
+          setError(
+            `This query matches ${counts.resultCount.toLocaleString()} results — too large to download at once. ` +
+            `Narrow the date range, parameter list, or scope (try "Selected Aquifer").`
+          );
+          setWqpIsDownloading(false);
+          return;
+        }
+      } catch { /* counts are advisory — proceed if they fail */ }
+
       const [stations, results] = await Promise.all([
         fetchWqpStations(wqpQueryParams),
         fetchWqpResults(wqpQueryParams),

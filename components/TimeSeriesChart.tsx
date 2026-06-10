@@ -68,6 +68,10 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
   const zoomStartTsRef = useRef<number | null>(null);
   const zoomEndTsRef = useRef<number | null>(null);
   const dataDomainRef = useRef<{ min: number; max: number }>({ min: 0, max: 1 });
+  // Active zoom-drag teardown so unmounting mid-drag (tab switch) doesn't
+  // leak the window listeners
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { dragCleanupRef.current?.(); }, []);
 
   // Dismiss on Escape
   useEffect(() => {
@@ -411,11 +415,16 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
       overlay.style.height = `${ds.plotHeight}px`;
     };
 
-    const onUp = (me: MouseEvent) => {
+    const cleanup = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       if (dragOverlayRef.current) dragOverlayRef.current.style.display = 'none';
       isDraggingRef.current = false;
+      dragCleanupRef.current = null;
+    };
+
+    const onUp = (me: MouseEvent) => {
+      cleanup();
 
       let leftTs: number | null = null;
       let rightTs: number | null = null;
@@ -446,6 +455,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    dragCleanupRef.current = cleanup;
   }, [getPlotBounds]);
 
   if (measurements.length === 0) {

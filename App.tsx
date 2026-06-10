@@ -83,6 +83,12 @@ const ExpandedChartWindow: React.FC<{
 }> = ({ onClose, title, subtitle, children }) => {
   const winRef = useRef<HTMLDivElement>(null);
 
+  // Active drag teardown — without this, unmounting mid-drag (e.g. Escape
+  // closes the window) leaks the window listeners, which keep mutating a
+  // detached node
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { dragCleanupRef.current?.(); }, []);
+
   // Initialise centered at 80% viewport
   const initRect = useRef({
     x: Math.round(window.innerWidth * 0.1),
@@ -106,9 +112,15 @@ const ExpandedChartWindow: React.FC<{
       el.style.left = `${nx}px`;
       el.style.top = `${ny}px`;
     };
-    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    const onUp = () => cleanup();
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      dragCleanupRef.current = null;
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    dragCleanupRef.current = cleanup;
   };
 
   // --- Corner / edge resize ---
@@ -135,9 +147,15 @@ const ExpandedChartWindow: React.FC<{
       el.style.width = `${newW}px`;
       el.style.height = `${newH}px`;
     };
-    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    const onUp = () => cleanup();
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      dragCleanupRef.current = null;
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    dragCleanupRef.current = cleanup;
   };
 
   const r = initRect.current;

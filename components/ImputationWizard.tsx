@@ -198,7 +198,21 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
     };
 
     try {
+      // Batch log updates per animation frame — copying the accumulator
+      // and re-rendering per message is O(n²) over the run
       const logAccumulator: string[] = [];
+      let logFlushScheduled = false;
+      const pushLog = (msg: string) => {
+        if (cancelledRef.current) return;
+        logAccumulator.push(msg);
+        if (logFlushScheduled) return;
+        logFlushScheduled = true;
+        requestAnimationFrame(() => {
+          logFlushScheduled = false;
+          if (!cancelledRef.current) setLogMessages([...logAccumulator]);
+        });
+      };
+
       const run = startImputation(
         {
           input,
@@ -207,12 +221,7 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
           wells,
           measurements: measurements.filter(m => wellKeySet.has(`${m.regionId}:${m.aquiferId}:${m.wellId}`)),
         },
-        (msg) => {
-          if (!cancelledRef.current) {
-            logAccumulator.push(msg);
-            setLogMessages([...logAccumulator]);
-          }
-        },
+        pushLog,
         (stepText, pct) => {
           if (!cancelledRef.current) {
             setProgressText(stepText);

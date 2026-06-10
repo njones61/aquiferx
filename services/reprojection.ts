@@ -275,8 +275,18 @@ const WGS84 = 'EPSG:4326';
 
 function isWGS84(crsString: string): boolean {
   if (!crsString) return true;
-  const lower = crsString.toLowerCase();
-  return lower.includes('4326') || lower.includes('wgs84') || lower.includes('wgs 84');
+  const lower = crsString.trim().toLowerCase();
+  // A projected CRS on the WGS84 datum (e.g. UTM) mentions "WGS 84"/4326
+  // in its nested GEOGCS but still needs reprojection — the old substring
+  // check skipped it and left coordinates in meters
+  if (lower.startsWith('projcs') || lower.startsWith('projcrs') || lower.startsWith('projectedcrs')) return false;
+  if (lower.startsWith('geogcs') || lower.startsWith('geogcrs') || lower.startsWith('geographiccrs')) {
+    return lower.includes('wgs84') || lower.includes('wgs 84') || lower.includes('wgs_1984');
+  }
+  // Short identifier forms: EPSG:4326, urn:ogc:def:crs:EPSG::4326, CRS84
+  return /(^|[^0-9])4326([^0-9]|$)/.test(lower)
+    || lower.includes('crs84')
+    || lower.includes('wgs84') || lower.includes('wgs 84');
 }
 
 function getProjection(crsIdentifier: string): string | null {
