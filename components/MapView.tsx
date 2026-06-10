@@ -467,27 +467,46 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
   }, [regions, selectedRegion]);
 
-  // Update Aquifer Layer (polygons only)
+  // Build aquifer polygon layers — geometry only changes with the
+  // region's aquifer list. Selection/trend styling is applied via
+  // setStyle in the effect below: rebuilding L.geoJSON layers on every
+  // selection froze the UI for seconds on regions with detailed
+  // boundaries (Arizona: 54 basins, ~225k vertices).
+  const aquiferLayerMapRef = useRef<Map<string, L.GeoJSON>>(new Map());
+
   useEffect(() => {
     if (!aquiferLayerRef.current || !mapRef.current) return;
     aquiferLayerRef.current.clearLayers();
+    aquiferLayerMapRef.current.clear();
+    if (!selectedRegion) return;
 
-    if (selectedRegion) {
-      aquifers.forEach(a => {
-        const isSelected = selectedAquifer?.id === a.id;
-        const trendColor = aquiferColors?.get(a.id);
-        const layer = L.geoJSON(a.geojson, {
-          interactive: false,
-          style: {
-            color: isSelected ? '#6366f1' : trendColor ? '#000000' : '#475569',
-            weight: isSelected ? 5 : trendColor ? 3 : 2,
-            fillOpacity: isSelected ? 0 : trendColor ? 0.45 : 0.15,
-            fillColor: trendColor || '#64748b'
-          }
-        });
-        aquiferLayerRef.current?.addLayer(layer);
+    aquifers.forEach(a => {
+      const layer = L.geoJSON(a.geojson, { interactive: false });
+      aquiferLayerMapRef.current.set(a.id, layer);
+      aquiferLayerRef.current!.addLayer(layer);
+    });
+  }, [aquifers, selectedRegion]);
+
+  // Restyle on selection / trend-color change (cheap — no geometry rebuild)
+  useEffect(() => {
+    aquiferLayerMapRef.current.forEach((layer, id) => {
+      const isSelected = selectedAquifer?.id === id;
+      const trendColor = aquiferColors?.get(id);
+      layer.setStyle({
+        color: isSelected ? '#6366f1' : trendColor ? '#000000' : '#475569',
+        weight: isSelected ? 5 : trendColor ? 3 : 2,
+        fillOpacity: isSelected ? 0 : trendColor ? 0.45 : 0.15,
+        fillColor: trendColor || '#64748b'
       });
+    });
+  }, [aquifers, selectedRegion, selectedAquifer, aquiferColors]);
 
+  // Fly to the region when it changes or its aquifer is deselected
+  // (split out of the layer-build effect so selection changes don't
+  // rebuild geometry)
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (selectedRegion) {
       const regionChanged = selectedRegion.id !== prevSelectedRegionIdRef.current;
       const aquiferDeselected = !selectedAquifer && prevSelectedAquiferIdRef.current !== null;
       if ((regionChanged || aquiferDeselected) && !selectedAquifer) {
@@ -501,7 +520,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     } else {
       prevSelectedRegionIdRef.current = null;
     }
-  }, [aquifers, selectedRegion, selectedAquifer, aquiferColors]);
+  }, [selectedRegion, selectedAquifer]);
 
   // Aquifer name labels (separate from polygons so font size changes don't rebuild polygons)
   useEffect(() => {

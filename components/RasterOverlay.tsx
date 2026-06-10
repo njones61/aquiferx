@@ -106,6 +106,18 @@ const NUM_CONTOUR_LEVELS = 8;
 
 type ContourLine = { level: number; segments: L.LatLng[][] };
 
+// Dedicated pane below Leaflet's overlayPane (zIndex 400) so aquifer
+// boundaries and well markers stay visible above the raster image —
+// otherwise the <img> lands after the vector SVG in the shared pane and
+// hides the boundary outline
+const RASTER_PANE = 'aqxRasterPane';
+function ensureRasterPane(map: L.Map): string {
+  if (!map.getPane(RASTER_PANE)) {
+    map.createPane(RASTER_PANE).style.zIndex = '350';
+  }
+  return RASTER_PANE;
+}
+
 function generateContourLines(
   values: (number | null)[],
   mask: (0 | 1)[],
@@ -340,7 +352,7 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
       if (overlayRef.current) {
         overlayRef.current.setUrl(url);
       } else {
-        overlayRef.current = L.imageOverlay(url, bounds, { opacity: 1.0 }).addTo(map);
+        overlayRef.current = L.imageOverlay(url, bounds, { opacity: 1.0, pane: ensureRasterPane(map) }).addTo(map);
       }
       // The previous image is already decoded — its URL can go
       if (overlayUrlRef.current) URL.revokeObjectURL(overlayUrlRef.current);
@@ -373,6 +385,7 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
         weight: 1.5,
         opacity: 0.4,
         interactive: false,
+        pane: ensureRasterPane(map),
       }).addTo(contourGroupRef.current!);
     }
   }, [frames, globalMin, globalMax, map, mask, nx, ny, dx, dy, minLat, minLng, bounds, activeLUT]);
