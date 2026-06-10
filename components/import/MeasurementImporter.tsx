@@ -318,7 +318,11 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
 
   // Derive initial mappings from auto-match when the file or catalog changes
   useEffect(() => {
-    if (!file || dataSource !== 'upload') { setColumnMappings([]); return; }
+    if (!file) { setColumnMappings([]); return; }
+    // USGS/WQP preset their own columnMappings when building the file —
+    // clearing here would wipe them (the WQP presets are set in the same
+    // commit as the file, so this effect runs right after)
+    if (dataSource !== 'upload') return;
     // Exclude columns the user has already mapped in the column mapper
     // (well_id / well_name / lat / long / date / value / aquifer_id). They
     // aren't measurement data and shouldn't be offered as type candidates.
@@ -505,6 +509,9 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       mapping: { well_id: 'well_id', date: 'date', value: 'value', aquifer_id: 'aquifer_id' },
       type: 'csv'
     });
+    // Keep typeColumnMapping in sync so isReady's per-type check passes —
+    // the columnMappings sync effect doesn't run for USGS downloads
+    setTypeColumnMapping(prev => ({ ...prev, wte: 'value' }));
     const span = computeDataSpan(measurements);
     setDataSpan(span);
     setTrimStartDate(span.minDate);
@@ -1151,7 +1158,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
 
       if (isMultiType && selectedTypes.length > 1) {
         for (const typeCode of selectedTypes) {
-          const valueCol = typeColumnMapping[typeCode];
+          const valueCol = typeColumnMapping[typeCode] ?? file.mapping['value'];
           if (!valueCol) continue;
 
           const isWteDepth = typeCode === 'wte' && wteIsDepth;
@@ -1195,9 +1202,12 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
           filesToSave.push({ path: `${regionId}/data_${typeCode}.csv`, content: csv });
         }
       } else {
-        // Single type
+        // Single type. Resolve the value column the same way as the
+        // multi-type path — file.mapping['value'] only exists for USGS
+        // downloads, so single-column uploads/WQP must use
+        // typeColumnMapping or every row silently filters out.
         const typeCode = selectedTypes[0] || 'wte';
-        const valueCol = file.mapping['value'];
+        const valueCol = typeColumnMapping[typeCode] ?? file.mapping['value'];
         const isWteDepth = typeCode === 'wte' && wteIsDepth;
 
         let processed = dedup(rows
