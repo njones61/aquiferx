@@ -4,6 +4,10 @@ import { processUploadedFile, UploadedFile, saveFiles, parseDate, detectDateForm
 import { fetchUSGSMeasurements, validateUSGSMeasurements, USGSDataQualityReport, USGSMeasurement, USGSDataSpan, computeDataSpan, filterByDateRange, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { loadCatalog } from '../../services/catalog';
 import { compareNames } from '../../utils/strings';
+import {
+  MeasurementRow, MEASUREMENT_CSV_HEADERS,
+  buildMeasurementRows, dedupMeasurements, mergeAppend, mergeFullRefresh,
+} from '../../services/measurementImport';
 import CatalogBrowser from '../CatalogBrowser';
 import WqpParameterPicker from '../WqpParameterPicker';
 import {
@@ -1147,140 +1151,67 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       const effectiveGseMap: Record<string, number> = { ...wellGseMap };
       for (const w of newWellRecords) if (w.gse) effectiveGseMap[w.well_id] = w.gse;
 
-      // Deduplicate within a batch by well_id+date. Strategy is user-selected.
-      type MeasRow = { well_id: string; date: string; value: string; aquifer_id: string };
-      let totalDupsCollapsed = 0;
-      const dedup = (rows: MeasRow[]): MeasRow[] => {
-        if (duplicateStrategy === 'keep-all') return rows;
-        // Group by key
-        const groups = new Map<string, MeasRow[]>();
-        for (const r of rows) {
-          const key = `${r.well_id}|${r.date}`;
-          const arr = groups.get(key);
-          if (arr) arr.push(r); else groups.set(key, [r]);
-        }
-        const result: MeasRow[] = [];
-        for (const [, group] of groups) {
-          if (group.length === 1) { result.push(group[0]); continue; }
-          totalDupsCollapsed += group.length - 1;
-          const nums = group.map(r => parseFloat(r.value)).filter(v => !isNaN(v));
-          let finalVal: string;
-          if (nums.length === 0) {
-            finalVal = group[0].value;
-          } else if (duplicateStrategy === 'average') {
-            finalVal = String(Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 1000) / 1000);
-          } else {
-            // maximum
-            finalVal = String(Math.max(...nums));
-          }
-          result.push({ ...group[0], value: finalVal });
-        }
-        return result;
-      };
-
       // Collect summary counts as we write each data file
       const summaryByType: Record<string, number> = {};
       const typeNames: Record<string, string> = {};
+      let totalDupsCollapsed = 0;
 
-      if (isMultiType && selectedTypes.length > 1) {
-        for (const typeCode of selectedTypes) {
-          const valueCol = typeColumnMapping[typeCode] ?? file.mapping['value'];
-          if (!valueCol) continue;
+      // One unified per-type pipeline for every source — the old separate
+      // multi-type/single-type branches duplicated this logic and drifted
+      // apart (which is where the value-column bugs came from):
+      // build rows → dedup → source-appropriate merge → CSV.
+      const typesToWrite = isMultiType && selectedTypes.length > 1
+        ? selectedTypes
+        : [selectedTypes[0] || 'wte'];
 
-          const isWteDepth = typeCode === 'wte' && wteIsDepth;
-
-          let processed = dedup(rows
-            .filter(r => rowToWellId(r) && r[dateCol] && r[valueCol])
-            .map(r => {
-              const wid = rowToWellId(r);
-              let val = r[valueCol];
-              if (isWteDepth) {
-                const gse = effectiveGseMap[wid] || 0;
-                const raw = parseFloat(val);
-                if (!isNaN(raw) && gse > 0) {
-                  val = String(Math.round((gse - Math.abs(raw)) * 100) / 100);
-                }
-              }
-              return {
-                well_id: wid,
-                date: parseDate(r[dateCol], dateFormat),
-                value: val,
-                aquifer_id: resolveAquifer(r),
-              };
-            }));
-
-          // Skip writing anything for this type if the CSV contributed no
-          // rows — don't leave behind empty header-only files or phantom
-          // type declarations.
-          if (processed.length === 0) continue;
-
-          // Capture the number of new rows for this type before merge so the
-          // summary can show what the user's CSV contributed
-          summaryByType[typeCode] = processed.length;
-          const effectiveType = dataTypes.find(d => d.code === typeCode);
-          typeNames[typeCode] = effectiveType?.name || typeCode;
-
-          if (importMode === 'append') {
-            processed = await mergeWithExisting(typeCode, processed);
-          }
-
-          const csv = toCsv(['well_id', 'date', 'value', 'aquifer_id'], processed);
-          filesToSave.push({ path: `${regionId}/data_${typeCode}.csv`, content: csv });
-        }
-      } else {
-        // Single type. Resolve the value column the same way as the
-        // multi-type path — file.mapping['value'] only exists for USGS
-        // downloads, so single-column uploads/WQP must use
-        // typeColumnMapping or every row silently filters out.
-        const typeCode = selectedTypes[0] || 'wte';
+      for (const typeCode of typesToWrite) {
         const valueCol = typeColumnMapping[typeCode] ?? file.mapping['value'];
-        const isWteDepth = typeCode === 'wte' && wteIsDepth;
+        if (!valueCol) continue;
 
-        let processed = dedup(rows
-          .filter(r => rowToWellId(r) && r[dateCol] && r[valueCol])
-          .map(r => {
-            const wid = rowToWellId(r);
-            let val = r[valueCol];
-            if (isWteDepth) {
-              const gse = effectiveGseMap[wid] || 0;
-              const raw = parseFloat(val);
-              if (!isNaN(raw) && gse > 0) {
-                val = String(Math.round((gse - Math.abs(raw)) * 100) / 100);
-              }
-            }
-            return {
-              well_id: wid,
-              date: parseDate(r[dateCol], dateFormat),
-              value: val,
-              aquifer_id: resolveAquifer(r),
-            };
-          }));
+        const built = buildMeasurementRows(rows, {
+          valueCol,
+          dateCol,
+          dateFormat,
+          convertDepthToWte: typeCode === 'wte' && wteIsDepth,
+          rowToWellId,
+          resolveAquifer,
+          gseOf: wid => effectiveGseMap[wid] || 0,
+        });
+        const deduped = dedupMeasurements(built, duplicateStrategy);
+        totalDupsCollapsed += deduped.collapsed;
+        let processed = deduped.rows;
 
-        // Skip empty imports so we don't create header-only phantom files
-        if (processed.length === 0) {
-          // Intentionally fall through to the error check below.
-        } else {
-          // Capture the new-row count for this type before merge
-          summaryByType[typeCode] = processed.length;
-          const effectiveType = dataTypes.find(d => d.code === typeCode);
-          typeNames[typeCode] = effectiveType?.name || typeCode;
+        // Skip writing anything for this type if the CSV contributed no
+        // rows — don't leave behind empty header-only files or phantom
+        // type declarations. (If every type ends up empty, the no-data
+        // check below surfaces the error.)
+        if (processed.length === 0) continue;
 
-          // Merge/overwrite logic depends on source and mode
-          if (dataSource === 'usgs') {
-            if (usgsMode === 'fresh' && importMode === 'replace') {
-              // Overwrite — no merge needed
-            } else if (usgsMode === 'full-refresh') {
-              processed = await mergeWithExistingFullRefresh(typeCode, processed);
-            } else {
-              processed = await mergeWithExisting(typeCode, processed);
-            }
-          } else if (importMode === 'append') {
-            processed = await mergeWithExisting(typeCode, processed);
+        // Capture the number of new rows for this type before merge so the
+        // summary can show what the user's CSV contributed
+        summaryByType[typeCode] = processed.length;
+        const effectiveType = dataTypes.find(d => d.code === typeCode);
+        typeNames[typeCode] = effectiveType?.name || typeCode;
+
+        // Merge/overwrite depends on source and mode. USGS downloads are
+        // always single-type wte, so the usgsMode cases never apply to a
+        // multi-type import.
+        if (dataSource === 'usgs') {
+          if (usgsMode === 'fresh' && importMode === 'replace') {
+            // Overwrite — no merge needed
+          } else if (usgsMode === 'full-refresh') {
+            processed = await mergeTypeWithExisting(typeCode, processed, 'full-refresh');
+          } else {
+            processed = await mergeTypeWithExisting(typeCode, processed, 'append');
           }
-
-          const csv = toCsv(['well_id', 'date', 'value', 'aquifer_id'], processed);
-          filesToSave.push({ path: `${regionId}/data_${typeCode}.csv`, content: csv });
+        } else if (importMode === 'append') {
+          processed = await mergeTypeWithExisting(typeCode, processed, 'append');
         }
+
+        filesToSave.push({
+          path: `${regionId}/data_${typeCode}.csv`,
+          content: toCsv(MEASUREMENT_CSV_HEADERS, processed),
+        });
       }
 
       // If every row was filtered out, bail out with a clear error instead
@@ -1347,75 +1278,20 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
     setIsSaving(false);
   };
 
-  const mergeWithExisting = async (
+  // Fetch the existing data file (if any) and merge per the given mode —
+  // the merge math itself lives in services/measurementImport.
+  const mergeTypeWithExisting = async (
     typeCode: string,
-    newRows: { well_id: string; date: string; value: string; aquifer_id: string }[]
-  ) => {
+    newRows: MeasurementRow[],
+    mode: 'append' | 'full-refresh'
+  ): Promise<MeasurementRow[]> => {
     try {
       const res = await freshFetch(`/data/${regionId}/data_${typeCode}.csv`);
       if (res.ok) {
-        const text = await res.text();
-        const { rows: existingRows } = parseCSV(text);
-        // Key on well_id|date only (matching the in-batch dedup and
-        // full-refresh merge): including aquifer_id re-appends the same
-        // measurement whenever a re-import resolves the aquifer differently
-        // (e.g. existing rows have a blank aquifer_id)
-        const existingKeys = new Set(
-          existingRows.map(r => `${r.well_id}|${r.date}`)
-        );
-        const toAdd = newRows.filter(r => !existingKeys.has(`${r.well_id}|${r.date}`));
-
-        return [
-          ...existingRows.map(r => ({
-            well_id: r.well_id,
-            date: r.date,
-            value: r.value,
-            aquifer_id: r.aquifer_id || ''
-          })),
-          ...toAdd
-        ];
-      }
-    } catch {}
-    return newRows;
-  };
-
-  const mergeWithExistingFullRefresh = async (
-    typeCode: string,
-    newRows: { well_id: string; date: string; value: string; aquifer_id: string }[]
-  ) => {
-    try {
-      const res = await freshFetch(`/data/${regionId}/data_${typeCode}.csv`);
-      if (res.ok) {
-        const text = await res.text();
-        const { rows: existingRows } = parseCSV(text);
-
-        // Build lookup from new data for fast matching
-        const newLookup = new Map<string, { value: string; aquifer_id: string }>();
-        for (const r of newRows) {
-          newLookup.set(`${r.well_id}|${r.date}`, { value: r.value, aquifer_id: r.aquifer_id });
-        }
-
-        // Update existing rows if matching key found in new data
-        const usedKeys = new Set<string>();
-        const merged = existingRows.map(r => {
-          const key = `${r.well_id}|${r.date}`;
-          const update = newLookup.get(key);
-          if (update) {
-            usedKeys.add(key);
-            return { well_id: r.well_id, date: r.date, value: update.value, aquifer_id: r.aquifer_id || update.aquifer_id };
-          }
-          return { well_id: r.well_id, date: r.date, value: r.value, aquifer_id: r.aquifer_id || '' };
-        });
-
-        // Append new rows not already in existing data (backfills)
-        for (const r of newRows) {
-          const key = `${r.well_id}|${r.date}`;
-          if (!usedKeys.has(key)) {
-            merged.push(r);
-          }
-        }
-
-        return merged;
+        const { rows: existingRows } = parseCSV(await res.text());
+        return mode === 'append'
+          ? mergeAppend(existingRows, newRows)
+          : mergeFullRefresh(existingRows, newRows);
       }
     } catch {}
     return newRows;
