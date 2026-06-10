@@ -321,10 +321,12 @@ function saveDataPlugin(): Plugin {
             return;
           }
           const controller = new AbortController();
+          // The timer must cover the entire exchange — clearing it when
+          // headers arrive would let a stall mid-body hang the browser
+          // request forever
           const timeout = setTimeout(() => controller.abort(), 120000);
           try {
             const response = await fetch(targetUrl, { signal: controller.signal });
-            clearTimeout(timeout);
             // Copy headers we care about (counts + content)
             const passthrough = [
               'content-type',
@@ -349,9 +351,10 @@ function saveDataPlugin(): Plugin {
               res.end(body);
             }
           } catch (fetchErr: any) {
-            clearTimeout(timeout);
             res.statusCode = 502;
             res.end(`WQP proxy error: ${fetchErr.message || fetchErr}`);
+          } finally {
+            clearTimeout(timeout);
           }
         } catch (err) {
           res.statusCode = 500;
@@ -374,19 +377,20 @@ function saveDataPlugin(): Plugin {
             return;
           }
           const controller = new AbortController();
+          // Timer covers headers + body (see wqp-proxy note above)
           const timeout = setTimeout(() => controller.abort(), 15000);
           try {
             const response = await fetch(targetUrl, { signal: controller.signal });
-            clearTimeout(timeout);
             const contentType = response.headers.get('content-type') || 'text/plain';
             res.setHeader('Content-Type', contentType);
             res.setHeader('Access-Control-Allow-Origin', '*');
             const body = await response.text();
             res.end(body);
           } catch (fetchErr: any) {
-            clearTimeout(timeout);
             res.statusCode = 502;
             res.end(`GLDAS proxy error: ${fetchErr.message || fetchErr}`);
+          } finally {
+            clearTimeout(timeout);
           }
         } catch (err) {
           res.statusCode = 500;

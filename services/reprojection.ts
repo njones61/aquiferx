@@ -1,4 +1,5 @@
 import proj4 from 'proj4';
+import { fetchWithTimeout } from './http';
 
 // Common EPSG definitions
 const KNOWN_CRS: Record<string, string> = {
@@ -109,8 +110,8 @@ export async function fetchEpsgDefinition(rawCode: string): Promise<EpsgDefiniti
   const numeric = code.replace(/^EPSG:/, '');
   try {
     const [proj4Res, jsonRes] = await Promise.all([
-      fetch(`https://epsg.io/${numeric}.proj4`),
-      fetch(`https://epsg.io/?format=json&q=${numeric}`),
+      fetchWithTimeout(`https://epsg.io/${numeric}.proj4`, {}, 10000),
+      fetchWithTimeout(`https://epsg.io/?format=json&q=${numeric}`, {}, 10000),
     ]);
     if (!proj4Res.ok) return null;
     const proj4Str = (await proj4Res.text()).trim();
@@ -140,7 +141,7 @@ export async function fetchEpsgDefinition(rawCode: string): Promise<EpsgDefiniti
  */
 async function lookupEpsgCandidatesNear(lat: number, lng: number): Promise<string[]> {
   try {
-    const res = await fetch(`https://epsg.io/?format=json&q=${lat},${lng}`);
+    const res = await fetchWithTimeout(`https://epsg.io/?format=json&q=${lat},${lng}`, {}, 10000);
     if (!res.ok) return [];
     const json = await res.json();
     if (!Array.isArray(json?.results)) return [];

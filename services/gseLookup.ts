@@ -1,4 +1,5 @@
 import { isInUS } from './importUtils';
+import { fetchWithTimeout } from './http';
 
 export interface GseFetchInput {
   id: string;
@@ -33,7 +34,7 @@ export async function fetchGseBatch(wells: GseFetchInput[], opts: GseFetchOption
         const well = queue.shift()!;
         try {
           const url = `https://epqs.nationalmap.gov/v1/json?x=${well.lng}&y=${well.lat}&units=Meters&wkid=4326`;
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url, {}, 10000);
           if (res.ok) {
             const data = await res.json();
             const m = parseFloat(data.value);
@@ -59,7 +60,7 @@ export async function fetchGseBatch(wells: GseFetchInput[], opts: GseFetchOption
     try {
       const lats = batch.map(w => w.lat).join(',');
       const lngs = batch.map(w => w.lng).join(',');
-      const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`);
+      const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`, {}, 15000);
       if (res.ok) {
         const data = await res.json();
         batch.forEach((well, idx) => {

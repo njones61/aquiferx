@@ -14,6 +14,7 @@
 
 import { ParameterCatalog } from '../types';
 import { parseCSV } from './importUtils';
+import { fetchWithTimeout } from './http';
 
 const WQP_ORIGIN = 'https://www.waterqualitydata.us/data';
 
@@ -120,9 +121,15 @@ function buildQueryString(params: WqpQueryParams, extra: Record<string, string>)
   return parts.join('&');
 }
 
+// Requests go through the Vite WQP proxy, which enforces its own upstream
+// timeout — this browser-side timeout is a backstop so a stalled proxy
+// response can never hang the import flow. Large CSV bodies can take a
+// while, hence the generous limit.
+const WQP_TIMEOUT_MS = 180000;
+
 async function fetchWithRetry(url: string, init?: RequestInit, maxRetries = 3): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const res = await fetch(url, init);
+    const res = await fetchWithTimeout(url, init ?? {}, WQP_TIMEOUT_MS);
     if (res.ok) return res;
     if (res.status >= 500 || res.status === 429) {
       const wait = Math.pow(2, attempt) * 1500 + Math.random() * 800;

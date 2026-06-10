@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, RefreshCw } from 'lucide-react';
 import { processUploadedFile, UploadedFile, saveFiles, deleteFile, isInUS, assignWellToAquifer, parseCSV, freshFetch } from '../../services/importUtils';
 import { fetchUSGSWells, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
+import { fetchGseBatch } from '../../services/gseLookup';
 import { SampleCoord } from '../../services/reprojection';
 import { useCrsPicker } from '../../hooks/useCrsPicker';
 import CrsPickerPanel from './CrsPickerPanel';
@@ -384,63 +385,20 @@ const WellImporter: React.FC<WellImporterProps> = ({
 
     setGseProgress({ current: 0, total: wells.length });
     const allInUS = wells.every(w => isInUS(w.lat, w.lng));
-    const results = new Map<string, number>();
+    setGseSource(allInUS ? 'USGS 3DEP (~10m resolution)' : 'Open-Meteo Copernicus DEM (~90m resolution)');
 
     try {
-      if (allInUS) {
-        setGseSource('USGS 3DEP (~10m resolution)');
-        let completed = 0;
-        const queue = [...wells];
-        const fetchOne = async () => {
-          while (queue.length > 0) {
-            const well = queue.shift()!;
-            try {
-              const url = `https://epqs.nationalmap.gov/v1/json?x=${well.lng}&y=${well.lat}&units=Meters&wkid=4326`;
-              const res = await fetch(url);
-              if (res.ok) {
-                const data = await res.json();
-                const elevMeters = parseFloat(data.value);
-                if (!isNaN(elevMeters) && elevMeters > -100) {
-                  const elev = lengthUnit === 'ft' ? Math.round(elevMeters * 3.28084 * 100) / 100 : Math.round(elevMeters * 100) / 100;
-                  results.set(well.id, elev);
-                }
-              }
-            } catch {}
-            completed++;
-            setGseProgress({ current: completed, total: wells.length });
-          }
-        };
-        await Promise.all(Array.from({ length: Math.min(5, wells.length) }, () => fetchOne()));
-      } else {
-        setGseSource('Open-Meteo Copernicus DEM (~90m resolution)');
-        let completed = 0;
-        for (let i = 0; i < wells.length; i += 100) {
-          const batch = wells.slice(i, i + 100);
-          try {
-            const lats = batch.map(w => w.lat).join(',');
-            const lngs = batch.map(w => w.lng).join(',');
-            const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`);
-            if (res.ok) {
-              const data = await res.json();
-              batch.forEach((well, idx) => {
-                const elevMeters = data.elevation[idx];
-                if (elevMeters !== undefined && !isNaN(elevMeters) && elevMeters > -1000) {
-                  const elev = lengthUnit === 'ft' ? Math.round(elevMeters * 3.28084 * 100) / 100 : Math.round(elevMeters * 100) / 100;
-                  results.set(well.id, elev);
-                }
-              });
-            }
-          } catch {}
-          completed += batch.length;
-          setGseProgress({ current: completed, total: wells.length });
-        }
-      }
-      setGseValues(results);
+      const { values } = await fetchGseBatch(wells, {
+        lengthUnit,
+        onProgress: (current, total) => setGseProgress({ current, total }),
+      });
+      setGseValues(values);
       setGseInterpolated(true);
     } catch (err) {
       setError(`GSE interpolation failed: ${err}`);
+    } finally {
+      setGseIsRunning(false);
     }
-    setGseIsRunning(false);
   };
 
   const resolveAquiferId = (row: Record<string, string>): string => {

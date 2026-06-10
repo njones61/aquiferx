@@ -90,12 +90,18 @@ export function computeAquiferCentroid(geojson: any): [number, number] {
  * Generate monthly date strings from start to end (inclusive)
  */
 function generateMonthlyDates(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
+  // An Invalid Date makes `d > end` always false — without this guard the
+  // loop below would never terminate
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new Error(`Invalid date range: "${startDate}" – "${endDate}"`);
+  }
+  const dates: string[] = [];
   let year = start.getUTCFullYear();
   let month = start.getUTCMonth();
-  while (true) {
+  const MAX_MONTHS = 10000; // backstop: ~833 years
+  for (let i = 0; i < MAX_MONTHS; i++) {
     const d = new Date(Date.UTC(year, month, 1));
     if (d > end) break;
     dates.push(d.toISOString().slice(0, 10));
@@ -181,7 +187,7 @@ export async function fetchGldasFeatures(
     // Handle "none" values like the notebook does
     if (valStr === 'none' || valStr === '') continue;
     const value = parseFloat(valStr);
-    if (dateStr && !isNaN(value)) {
+    if (dateStr && !isNaN(new Date(dateStr).getTime()) && !isNaN(value)) {
       rawDates.push(dateStr);
       rawValues.push(value);
     }

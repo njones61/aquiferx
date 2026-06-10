@@ -8,6 +8,8 @@
  * Get a free key at: https://api.waterdata.usgs.gov/signup/
  */
 
+import { fetchWithTimeout, isAbortError } from './http';
+
 export interface USGSWell {
   siteId: string;
   siteName: string;
@@ -56,10 +58,25 @@ function withApiKey(url: string): string {
   return `${url}${sep}api_key=${encodeURIComponent(key)}`;
 }
 
-async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
+const REQUEST_TIMEOUT_MS = 30000;
+
+async function fetchRetrying(url: string, init: RequestInit, maxRetries = 3): Promise<Response> {
   const fullUrl = withApiKey(url);
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const res = await fetch(fullUrl);
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(fullUrl, init, REQUEST_TIMEOUT_MS);
+    } catch (err) {
+      // Timeout or transient network failure — retry like a 5xx
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      if (isAbortError(err)) {
+        throw new Error(`USGS request timed out after ${REQUEST_TIMEOUT_MS / 1000}s (${maxRetries} attempts)`);
+      }
+      throw err;
+    }
     if (res.ok) return res;
     if (res.status === 429) {
       const wait = Math.pow(2, attempt) * 2000 + Math.random() * 1000;
@@ -76,29 +93,17 @@ async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
   throw new Error('Max retries exceeded — you may be rate-limited. Get a free API key at https://api.waterdata.usgs.gov/signup/');
 }
 
+async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
+  return fetchRetrying(url, {}, maxRetries);
+}
+
 /** POST with CQL2 JSON body + retry logic */
 async function postCQL2WithRetry(url: string, body: object, maxRetries = 3): Promise<Response> {
-  const fullUrl = withApiKey(url);
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const res = await fetch(fullUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/query-cql-json' },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) return res;
-    if (res.status === 429) {
-      const wait = Math.pow(2, attempt) * 2000 + Math.random() * 1000;
-      console.warn(`429 rate limited (attempt ${attempt + 1}/${maxRetries}), waiting ${Math.round(wait / 1000)}s...`);
-      await new Promise(r => setTimeout(r, wait));
-      continue;
-    }
-    if (res.status >= 500) {
-      await new Promise(r => setTimeout(r, 2000));
-      continue;
-    }
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-  }
-  throw new Error('Max retries exceeded — you may be rate-limited. Get a free API key at https://api.waterdata.usgs.gov/signup/');
+  return fetchRetrying(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/query-cql-json' },
+    body: JSON.stringify(body),
+  }, maxRetries);
 }
 
 /**
@@ -142,6 +147,11 @@ export async function fetchUSGSWells(
       hasMore = false;
     } else {
       offset += limit;
+      // Termination guard: if the server ever ignores/caps `offset` and keeps
+      // returning full pages, this loop would spin forever
+      if (offset > 1_000_000) {
+        throw new Error(`USGS well pagination exceeded ${offset} records — aborting (server may be ignoring offset)`);
+      }
     }
   }
 
@@ -384,6 +394,10 @@ export async function fetchUSGSMeasurements(
 
         hasMore = features.length >= PAGE_LIMIT;
         offset += PAGE_LIMIT;
+        if (offset > 5_000_000) {
+          console.warn('USGS measurement pagination exceeded 5M records for one batch — stopping this batch');
+          hasMore = false;
+        }
       } catch (err: any) {
         // If batch too large (400/413), halve the batch size and retry
         if (batchSize > 50 && /4(00|13)/.test(String(err?.message || ''))) {

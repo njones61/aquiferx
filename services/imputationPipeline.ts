@@ -29,12 +29,18 @@ function yieldToUI(): Promise<void> {
  * Matches Python: pd.date_range(start, freq='1MS', end=end)
  */
 function generateMonthlyDates(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
+  // An Invalid Date makes `d > end` always false — without this guard the
+  // loop below would never terminate
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new Error(`Invalid date range: "${startDate}" – "${endDate}"`);
+  }
+  const dates: string[] = [];
   let year = start.getUTCFullYear();
   let month = start.getUTCMonth();
-  while (true) {
+  const MAX_MONTHS = 10000; // backstop: ~833 years
+  for (let i = 0; i < MAX_MONTHS; i++) {
     const d = new Date(Date.UTC(year, month, 1));
     if (d > end) break;
     dates.push(d.toISOString().slice(0, 10));
