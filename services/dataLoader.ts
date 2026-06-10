@@ -101,7 +101,19 @@ function computeLabelPoint(geojson: any, bounds: [number, number, number, number
     }
   }
 
-  const result = polylabel(bestPoly, 0.001);
+  // Precision scaled to the polygon size: a fixed 0.001° on a basin-scale
+  // polygon makes polylabel subdivide thousands of cells against every
+  // vertex — with 54 detailed basins this alone cost tens of seconds of
+  // startup. ~1% of the polygon extent is plenty for placing a label.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const pt of bestPoly[0] as unknown as number[][]) {
+    if (pt[0] < minX) minX = pt[0];
+    if (pt[0] > maxX) maxX = pt[0];
+    if (pt[1] < minY) minY = pt[1];
+    if (pt[1] > maxY) maxY = pt[1];
+  }
+  const precision = Math.max(0.001, Math.max(maxX - minX, maxY - minY) / 100);
+  const result = polylabel(bestPoly, precision);
   return [result[1], result[0]]; // [lat, lng]
 }
 

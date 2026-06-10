@@ -198,10 +198,11 @@ const App: React.FC = () => {
       }
     } else {
       setActiveTimeSeriesTab('waterLevel');
-      setRasterFrameDate(null);
+      setRasterFrame.clear();
       setCrossSectionProfile(null);
     }
     setCompareRasterResults([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rasterResult]);
 
   // Auto-switch to cross-section tab when profile is set/cleared.
@@ -1360,7 +1361,7 @@ const App: React.FC = () => {
                 analysis={rasterResult}
                 map={mapViewRef.current.getMap()!}
                 onClose={handleUnloadRaster}
-                onFrameChange={setRasterFrame}
+                onFrameChange={setRasterFrame.set}
                 lengthUnit={selectedRegion?.lengthUnit || 'ft'}
                 onCrossSectionChange={handleCrossSectionChange}
                 dataTypeName={activeDataType.name}
