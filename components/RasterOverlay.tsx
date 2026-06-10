@@ -104,6 +104,8 @@ function rampGradientCSS(lut: [number, number, number][]): string {
 // --- Marching squares contour generation ---
 const NUM_CONTOUR_LEVELS = 8;
 
+type ContourLine = { level: number; segments: L.LatLng[][] };
+
 function generateContourLines(
   values: (number | null)[],
   mask: (0 | 1)[],
@@ -111,7 +113,7 @@ function generateContourLines(
   minLat: number, minLng: number,
   dx: number, dy: number,
   globalMin: number, globalMax: number
-): { level: number; segments: L.LatLng[][] }[] {
+): ContourLine[] {
   const range = globalMax - globalMin;
   if (range <= 0) return [];
 
@@ -235,6 +237,17 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
   const rubberBandRef = useRef<L.Polyline | null>(null);
   const startMarkerRef = useRef<L.CircleMarker | null>(null);
 
+  // Frame-render plumbing: contours cached per frame, overlay image via
+  // revokable blob URLs (toDataURL is a synchronous PNG encode), and a
+  // generation counter so stale async encodes from fast scrubbing are
+  // dropped instead of racing each other
+  const contourCacheRef = useRef(new Map<number, ContourLine[]>());
+  const overlayUrlRef = useRef<string | null>(null);
+  const renderGenRef = useRef(0);
+  const pendingFrameRef = useRef(0);
+  const rafIdRef = useRef<number | null>(null);
+  const renderFrameRef = useRef<(idx: number) => void>(() => {});
+
   const { grid, frames } = analysis;
   const { nx, ny, mask, minLng, minLat, dx, dy } = grid;
 
@@ -313,26 +326,41 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
     }
 
     ctx.putImageData(imageData, 0, 0);
-    const dataUrl = canvas.toDataURL();
 
-    if (overlayRef.current) {
-      overlayRef.current.setUrl(dataUrl);
-    } else {
-      overlayRef.current = L.imageOverlay(dataUrl, bounds, { opacity: 1.0 }).addTo(map);
-    }
+    // Async PNG encode (toBlob) instead of a synchronous toDataURL; the
+    // generation counter drops stale encodes during fast scrubbing
+    const gen = ++renderGenRef.current;
+    canvas.toBlob(blob => {
+      if (!blob || gen !== renderGenRef.current) return;
+      const url = URL.createObjectURL(blob);
+      if (overlayRef.current) {
+        overlayRef.current.setUrl(url);
+      } else {
+        overlayRef.current = L.imageOverlay(url, bounds, { opacity: 1.0 }).addTo(map);
+      }
+      // The previous image is already decoded — its URL can go
+      if (overlayUrlRef.current) URL.revokeObjectURL(overlayUrlRef.current);
+      overlayUrlRef.current = url;
+    });
 
-    // Generate and render contour lines
+    // Render contour lines — marching squares over the full grid is the
+    // expensive part of a frame change, and the result only depends on
+    // the frame + color range, so cache per frame index
     if (contourGroupRef.current) {
       contourGroupRef.current.clearLayers();
     } else {
       contourGroupRef.current = L.layerGroup().addTo(map);
     }
 
-    const contours = generateContourLines(
-      frame.values, mask, nx, ny,
-      minLat, minLng, dx, dy,
-      globalMin, globalMax
-    );
+    let contours = contourCacheRef.current.get(idx);
+    if (!contours) {
+      contours = generateContourLines(
+        frame.values, mask, nx, ny,
+        minLat, minLng, dx, dy,
+        globalMin, globalMax
+      );
+      contourCacheRef.current.set(idx, contours);
+    }
 
     for (const { segments } of contours) {
       if (segments.length === 0) continue;
@@ -356,6 +384,7 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
       contourGroupRef.current = null;
     }
     canvasRef.current = null;
+    contourCacheRef.current.clear();
     setFrameIdx(0);
     setPlaying(false);
     return () => {
@@ -366,10 +395,40 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
     };
   }, [analysis, map]);
 
-  // Render first frame on mount, and re-render on frame/ramp change
+  // Contour levels depend on the color range — invalidate the cache when
+  // it changes (frames/mask changes are covered by the analysis effect)
   useEffect(() => {
-    renderFrame(frameIdx);
+    contourCacheRef.current.clear();
+  }, [globalMin, globalMax]);
+
+  // Keep the latest renderFrame for the coalesced rAF below, so it always
+  // sees the current ramp/range
+  useEffect(() => {
+    renderFrameRef.current = renderFrame;
+  }, [renderFrame]);
+
+  // Render on frame/ramp change, coalescing rapid frameIdx changes
+  // (slider scrub fires per pixel) into one render per animation frame
+  useEffect(() => {
+    pendingFrameRef.current = frameIdx;
+    if (rafIdRef.current !== null) return; // a render is already scheduled
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      renderFrameRef.current(pendingFrameRef.current);
+    });
   }, [frameIdx, renderFrame]);
+
+  // Unmount: cancel any scheduled render and invalidate in-flight encodes
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+      renderGenRef.current++;
+      if (overlayUrlRef.current) {
+        URL.revokeObjectURL(overlayUrlRef.current);
+        overlayUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Animation loop
   useEffect(() => {
@@ -579,45 +638,63 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
   const activeRampName = COLOR_RAMPS.find(r => r.id === selectedRamp)?.name || 'BGYR';
 
   // --- Cursor value tooltip ---
-  const [cursorValue, setCursorValue] = useState<{ x: number; y: number; val: number } | null>(null);
+  // Driven via direct DOM writes from a once-subscribed handler: routing
+  // every mousemove through setState re-rendered this whole component per
+  // pixel of cursor travel, and re-subscribing per frameIdx churned the
+  // map's listener list during playback.
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const tooltipTextRef = useRef<HTMLDivElement | null>(null);
+  const cursorStateRef = useRef({ frames, frameIdx, minLat, minLng, dx, dy, nx, ny, mask, crossSectionMode });
+  useEffect(() => {
+    cursorStateRef.current = { frames, frameIdx, minLat, minLng, dx, dy, nx, ny, mask, crossSectionMode };
+  });
 
   useEffect(() => {
+    const hide = () => {
+      if (tooltipRef.current) tooltipRef.current.style.display = 'none';
+    };
+
     const onMouseMove = (e: L.LeafletMouseEvent) => {
+      const s = cursorStateRef.current;
+      const tip = tooltipRef.current;
+      if (!tip) return;
+      if (s.crossSectionMode) { hide(); return; }
+
       const { lat, lng } = e.latlng;
-      const col = Math.floor((lng - minLng) / dx);
-      const row = Math.floor((lat - minLat) / dy);
+      const col = Math.floor((lng - s.minLng) / s.dx);
+      const row = Math.floor((lat - s.minLat) / s.dy);
+      if (col < 0 || col >= s.nx || row < 0 || row >= s.ny) { hide(); return; }
 
-      if (col < 0 || col >= nx || row < 0 || row >= ny) {
-        setCursorValue(null);
-        return;
-      }
+      const idx = row * s.nx + col;
+      if (s.mask[idx] === 0) { hide(); return; }
 
-      const idx = row * nx + col;
-      if (mask[idx] === 0) {
-        setCursorValue(null);
-        return;
-      }
-
-      const frame = frames[frameIdx];
-      const val = frame?.values[idx];
-      if (val === null || val === undefined) {
-        setCursorValue(null);
-        return;
-      }
+      const val = s.frames[s.frameIdx]?.values[idx];
+      if (val === null || val === undefined) { hide(); return; }
 
       const containerPt = map.latLngToContainerPoint(e.latlng);
-      setCursorValue({ x: containerPt.x, y: containerPt.y, val });
+      tip.style.display = '';
+      tip.style.left = `${containerPt.x + 14}px`;
+      tip.style.top = `${containerPt.y - 10}px`;
+      if (tooltipTextRef.current) tooltipTextRef.current.textContent = val.toFixed(1);
     };
-
-    const onMouseOut = () => setCursorValue(null);
 
     map.on('mousemove', onMouseMove);
-    map.on('mouseout', onMouseOut);
+    map.on('mouseout', hide);
     return () => {
       map.off('mousemove', onMouseMove);
-      map.off('mouseout', onMouseOut);
+      map.off('mouseout', hide);
     };
-  }, [map, frames, frameIdx, minLat, minLng, dx, dy, nx, ny, mask]);
+  }, [map]);
+
+  // Hide a lingering tooltip when entering cross-section mode
+  useEffect(() => {
+    if (crossSectionMode && tooltipRef.current) tooltipRef.current.style.display = 'none';
+  }, [crossSectionMode]);
+
+  // Stable callback ref: an inline `el => el?.focus()` re-runs on every
+  // render (React detaches/reattaches inline refs), stealing focus back
+  // on each mousemove over the drawing overlay
+  const focusOnMount = useCallback((el: HTMLDivElement | null) => { el?.focus(); }, []);
 
   return (
     <>
@@ -722,17 +799,14 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
         </button>
       </div>
 
-      {/* Cursor value tooltip */}
-      {cursorValue && !crossSectionMode && (
-        <div
-          className="absolute z-[96] pointer-events-none"
-          style={{ left: cursorValue.x + 14, top: cursorValue.y - 10 }}
-        >
-          <div className="bg-black/80 text-white text-xs font-medium px-2 py-1 rounded shadow-lg whitespace-nowrap">
-            {cursorValue.val.toFixed(1)}
-          </div>
-        </div>
-      )}
+      {/* Cursor value tooltip (positioned/filled via direct DOM writes) */}
+      <div
+        ref={tooltipRef}
+        className="absolute z-[96] pointer-events-none"
+        style={{ display: 'none' }}
+      >
+        <div ref={tooltipTextRef} className="bg-black/80 text-white text-xs font-medium px-2 py-1 rounded shadow-lg whitespace-nowrap" />
+      </div>
 
       {/* Cross-section drawing overlay */}
       {crossSectionMode && !hasCrossSection && (
@@ -776,7 +850,7 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
             }
           }}
           tabIndex={0}
-          ref={(el) => el?.focus()}
+          ref={focusOnMount}
         >
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm pointer-events-none select-none">
             {crossSectionStart
