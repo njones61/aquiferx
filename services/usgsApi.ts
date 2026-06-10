@@ -59,13 +59,15 @@ function withApiKey(url: string): string {
 }
 
 const REQUEST_TIMEOUT_MS = 30000;
+// CQL POST queries return up to 10,000 records per page — give them longer
+const CQL_TIMEOUT_MS = 120000;
 
-async function fetchRetrying(url: string, init: RequestInit, maxRetries = 3): Promise<Response> {
+async function fetchRetrying(url: string, init: RequestInit, maxRetries = 3, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const fullUrl = withApiKey(url);
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     let res: Response;
     try {
-      res = await fetchWithTimeout(fullUrl, init, REQUEST_TIMEOUT_MS);
+      res = await fetchWithTimeout(fullUrl, init, timeoutMs);
     } catch (err) {
       // Timeout or transient network failure — retry like a 5xx
       if (attempt < maxRetries - 1) {
@@ -73,7 +75,7 @@ async function fetchRetrying(url: string, init: RequestInit, maxRetries = 3): Pr
         continue;
       }
       if (isAbortError(err)) {
-        throw new Error(`USGS request timed out after ${REQUEST_TIMEOUT_MS / 1000}s (${maxRetries} attempts)`);
+        throw new Error(`USGS request timed out after ${timeoutMs / 1000}s (${maxRetries} attempts)`);
       }
       throw err;
     }
@@ -103,7 +105,7 @@ async function postCQL2WithRetry(url: string, body: object, maxRetries = 3): Pro
     method: 'POST',
     headers: { 'Content-Type': 'application/query-cql-json' },
     body: JSON.stringify(body),
-  }, maxRetries);
+  }, maxRetries, CQL_TIMEOUT_MS);
 }
 
 /**
@@ -359,12 +361,26 @@ export async function fetchUSGSMeasurements(
   const allMeasurements: USGSMeasurement[] = [];
   const PAGE_LIMIT = 10000; // max records per response page
 
-  // Start with large batches; shrink if the server rejects them
+  // AWS WAF in front of api.waterdata.usgs.gov rejects POST bodies over
+  // 8 KB with a CORS-less 403 that browsers report as "Failed to fetch",
+  // so batches are sized by serialized bytes — a fixed site count (the old
+  // 1000) blew past the limit for regions with long site IDs.
+  const MAX_BODY_BYTES = 7000;
+
+  // Count cap kept as a backstop; shrinks if the server rejects a batch
   let batchSize = 1000;
 
   let i = 0;
   while (i < wellSiteIds.length) {
-    const batch = wellSiteIds.slice(i, i + batchSize);
+    const batch: string[] = [];
+    let bodyBytes = 250; // CQL envelope overhead
+    while (i + batch.length < wellSiteIds.length && batch.length < batchSize) {
+      const id = wellSiteIds[i + batch.length];
+      const idBytes = id.length + 3; // quotes + comma
+      if (batch.length > 0 && bodyBytes + idBytes > MAX_BODY_BYTES) break;
+      batch.push(id);
+      bodyBytes += idBytes;
+    }
     const cqlFilter = {
       op: 'and' as const,
       args: [
