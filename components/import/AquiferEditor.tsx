@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Trash2, Loader2 } from 'lucide-react';
 import { DataType } from '../../types';
 import { freshFetch, saveFiles, parseCSV, toCsv, WELLS_CSV_HEADERS } from '../../services/importUtils';
+import { compareNames } from '../../utils/strings';
 import ConfirmDialog from './ConfirmDialog';
 
 interface AquiferEditorProps {
@@ -47,7 +48,7 @@ const AquiferEditor: React.FC<AquiferEditorProps> = ({ regionId, regionName, dat
         }
         setRows(Array.from(grouped.entries()).map(([id, { name, features }]) => ({
           id, name, origName: name, features,
-        })));
+        })).sort((a, b) => compareNames(a.name || a.id, b.name || b.id)));
       } catch {}
       setLoading(false);
     })();

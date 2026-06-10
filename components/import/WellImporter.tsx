@@ -3,6 +3,7 @@ import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, RefreshCw } 
 import { processUploadedFile, UploadedFile, saveFiles, deleteFile, isInUS, assignWellToAquifer, parseCSV, toCsv, WELLS_CSV_HEADERS, freshFetch } from '../../services/importUtils';
 import { fetchUSGSWells, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { fetchGseBatch } from '../../services/gseLookup';
+import { compareNames } from '../../utils/strings';
 import { SampleCoord } from '../../services/reprojection';
 import { useCrsPicker } from '../../hooks/useCrsPicker';
 import CrsPickerPanel from './CrsPickerPanel';
@@ -142,6 +143,8 @@ const WellImporter: React.FC<WellImporterProps> = ({
             id: String(f.properties?.aquifer_id || ''),
             name: f.properties?.aquifer_name || ''
           }));
+          list.sort((a: { id: string; name: string }, b: { id: string; name: string }) =>
+            compareNames(a.name || a.id, b.name || b.id));
           setAquiferList(list);
           if (list.length === 1) {
             setAquiferAssignment('single');

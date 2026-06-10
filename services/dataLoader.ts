@@ -1,6 +1,7 @@
 import polylabel from 'polylabel';
 import { Region, Aquifer, Well, Measurement, RegionMeta, RasterAnalysisMeta, ImputationModelMeta, DataType } from '../types';
 import { freshFetch, parseCSV } from './importUtils';
+import { compareNames } from '../utils/strings';
 import { loadCatalog, computeEffectiveDataTypes } from './catalog';
 
 interface DataFolder {
@@ -230,6 +231,9 @@ export async function loadAquifers(regionId: string, regionPath: string, wells: 
     console.warn(`Error loading aquifers for ${regionId}:`, e);
   }
 
+  // Alphabetize so the sidebar tree and every selector list basins in a
+  // predictable order regardless of feature order in the geojson
+  aquifers.sort((a, b) => compareNames(a.name || a.id, b.name || b.id));
   return aquifers;
 }
 

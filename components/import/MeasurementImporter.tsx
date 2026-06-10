@@ -3,6 +3,7 @@ import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, Calendar, Ma
 import { processUploadedFile, UploadedFile, saveFiles, parseDate, detectDateFormat, parseCSV, toCsv, WELLS_CSV_HEADERS, isInUS, freshFetch, assignWellToAquifer, DATE_FORMATS } from '../../services/importUtils';
 import { fetchUSGSMeasurements, validateUSGSMeasurements, USGSDataQualityReport, USGSMeasurement, USGSDataSpan, computeDataSpan, filterByDateRange, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { loadCatalog } from '../../services/catalog';
+import { compareNames } from '../../utils/strings';
 import CatalogBrowser from '../CatalogBrowser';
 import WqpParameterPicker from '../WqpParameterPicker';
 import {
@@ -165,10 +166,13 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
           setAquifersGeojson(gj);
           if (!singleUnit) {
             const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
-            setAquiferList(features.map((f: any) => ({
+            const list = features.map((f: any) => ({
               id: String(f.properties?.aquifer_id || ''),
               name: f.properties?.aquifer_name || ''
-            })));
+            }));
+            list.sort((a: { id: string; name: string }, b: { id: string; name: string }) =>
+              compareNames(a.name || a.id, b.name || b.id));
+            setAquiferList(list);
           }
         }
       } catch {}
