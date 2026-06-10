@@ -211,6 +211,12 @@ export function estimateVariogramParams(
 
   console.log(`[Kriging] Variogram: sill=${variance.toFixed(2)}, range=${range.toFixed(0)}m, nugget=${nugget.toFixed(4)}, mean=${mean.toFixed(2)}, n=${n}`);
 
+  // Math.max(NaN, x) is NaN — a single bad value would silently turn the
+  // entire raster into nulls, so fail loudly instead
+  if (!Number.isFinite(variance) || !Number.isFinite(range)) {
+    throw new Error('Variogram estimation produced non-finite parameters — check well values for NaN/Infinity');
+  }
+
   return {
     sill: Math.max(variance, 0.01),
     range: Math.max(range, 100),

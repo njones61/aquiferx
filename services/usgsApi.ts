@@ -347,7 +347,8 @@ export function filterByDateRange(
  */
 export async function fetchUSGSMeasurements(
   wellSiteIds: string[],
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
+  onBatchError?: (message: string) => void
 ): Promise<USGSMeasurement[]> {
   if (wellSiteIds.length === 0) return [];
 
@@ -368,7 +369,10 @@ export async function fetchUSGSMeasurements(
       ],
     };
 
-    // Paginate through results for this batch
+    // Paginate through results for this batch. Pages accumulate locally so
+    // a batch-size retry can discard them — merging eagerly would duplicate
+    // already-fetched pages when the whole batch is re-requested.
+    const batchMeasurements: USGSMeasurement[] = [];
     let offset = 0;
     let hasMore = true;
     let batchFailed = false;
@@ -388,7 +392,7 @@ export async function fetchUSGSMeasurements(
           const value = parseFloat(String(props.value ?? props.result_measure_value ?? ''));
 
           if (siteId && date && !isNaN(value)) {
-            allMeasurements.push({ siteId, date, value });
+            batchMeasurements.push({ siteId, date, value });
           }
         }
 
@@ -399,14 +403,20 @@ export async function fetchUSGSMeasurements(
           hasMore = false;
         }
       } catch (err: any) {
-        // If batch too large (400/413), halve the batch size and retry
-        if (batchSize > 50 && /4(00|13)/.test(String(err?.message || ''))) {
+        // If batch too large (400/413), halve the batch size and retry the
+        // whole batch (anchored so a "400" inside an error body can't
+        // trigger a spurious size reduction)
+        if (batchSize > 50 && /^HTTP 4(00|13):/.test(String(err?.message || ''))) {
           batchSize = Math.max(50, Math.floor(batchSize / 2));
           console.warn(`Batch too large, reducing to ${batchSize} sites per request`);
           batchFailed = true;
           hasMore = false;
         } else {
-          console.warn(`Failed to fetch measurement batch (sites ${i + 1}–${i + batch.length}):`, err);
+          // Terminal failure for this batch: keep whatever pages succeeded,
+          // tell the caller, and move on rather than dying silently
+          const msg = `Measurement download incomplete for sites ${i + 1}–${i + batch.length}: ${err?.message || err}`;
+          console.warn(msg);
+          onBatchError?.(msg);
           hasMore = false;
         }
       }
@@ -414,6 +424,7 @@ export async function fetchUSGSMeasurements(
 
     // Only advance if batch succeeded; otherwise retry with smaller batch
     if (!batchFailed) {
+      for (const m of batchMeasurements) allMeasurements.push(m);
       i += batch.length;
       onProgress?.(Math.min(i, wellSiteIds.length), wellSiteIds.length);
     }

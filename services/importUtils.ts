@@ -95,7 +95,11 @@ export function parseDate(dateStr: string, format: string): string {
     switch (format) {
       case 'iso':
         parts = dateStr.split('-');
-        if (parts.length === 3) return dateStr;
+        if (parts.length === 3) {
+          // Zero-pad so lexicographic comparisons (cutoffs, sorts, dedup
+          // keys) work — "2024-1-5" would sort/compare incorrectly
+          return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        }
         break;
       case 'us':
       case 'us-short':

@@ -248,11 +248,14 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
       if (importDbMode === 'replace') {
         for (const existing of regionList) {
           try {
-            await fetch('/api/delete-folder', {
+            const res = await fetch('/api/delete-folder', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ folderPath: `data/${existing.id}` })
+              body: JSON.stringify({ folder: existing.id })
             });
+            if (!res.ok) {
+              errors.push(`Failed to delete existing region "${existing.name}": ${await res.text()}`);
+            }
           } catch (err) {
             errors.push(`Failed to delete existing region "${existing.name}": ${err}`);
           }

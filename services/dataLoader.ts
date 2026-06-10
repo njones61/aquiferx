@@ -360,7 +360,9 @@ export async function loadMeasurements(regionPath: string, regionId: string, dat
         const wellId = row['well_id'] || '';
         const wellName = row['well_name'] || '';
         const date = row['date'] || '';
-        const value = parseFloat(row['value'] || '0');
+        // A blank value cell is a missing measurement, not a measurement of 0
+        const rawValue = (row['value'] || '').trim();
+        const value = rawValue ? parseFloat(rawValue) : NaN;
         const aquiferId = row['aquifer_id'] || '';
 
         if (wellId && date && !isNaN(value)) {

@@ -11,7 +11,9 @@ export interface GldasFeatures {
   soilw_yr10: number[];
 }
 
-// In-memory cache: all wells in same aquifer share the same GLDAS data
+// In-memory cache: all wells in same aquifer share the same GLDAS data.
+// Keyed by "{regionId}:{aquiferId}" — aquifer ids alone collide across
+// regions (single-unit regions all use aquifer_id=0).
 const gldasCache = new Map<string, { features: GldasFeatures; range: { min: string; max: string } }>();
 
 /**
@@ -135,13 +137,13 @@ function rollingMean(values: number[], window: number): number[] {
  * Fetch GLDAS soil moisture features for an aquifer
  */
 export async function fetchGldasFeatures(
-  aquiferId: string,
+  cacheKey: string,
   aquiferGeojson: any,
   startDate: string,
   endDate: string,
 ): Promise<GldasFeatures> {
   // Check cache — only use if it covers the requested date range
-  const cached = gldasCache.get(aquiferId);
+  const cached = gldasCache.get(cacheKey);
   if (cached && cached.range.min <= startDate && cached.range.max >= endDate) {
     return cached.features;
   }
@@ -230,7 +232,7 @@ export async function fetchGldasFeatures(
     soilw_yr10: yr10.slice(trimStart),
   };
 
-  gldasCache.set(aquiferId, {
+  gldasCache.set(cacheKey, {
     features,
     range: { min: features.dates[0], max: features.dates[features.dates.length - 1] },
   });

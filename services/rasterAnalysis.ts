@@ -269,10 +269,12 @@ export async function runRasterAnalysis(
 
   console.log(`[RasterAnalysis] ${wellInterp.size}/${wells.length} wells qualified (method=${temporal.method}, minObs=${temporal.minObservations}, minSpan=${temporal.minTimeSpan}yr)`);
 
-  // Apply log transform to well values before spatial interpolation
+  // Apply log transform to well values before spatial interpolation.
+  // Non-positive values have no log — treat them as missing rather than
+  // letting NaN/-Infinity poison the variogram and the whole raster.
   if (general.logInterpolation) {
     for (const [, entry] of wellInterp) {
-      entry.values = entry.values.map(v => v !== null ? Math.log(v) : null);
+      entry.values = entry.values.map(v => v !== null && v > 0 ? Math.log(v) : null);
     }
   }
 
@@ -285,7 +287,7 @@ export async function runRasterAnalysis(
     const allWellMeanValues: number[] = [];
 
     for (const [, { well, values }] of wellInterp) {
-      const validValues = values.filter((v): v is number => v !== null);
+      const validValues = values.filter((v): v is number => v !== null && Number.isFinite(v));
       if (validValues.length > 0) {
         allWellLats.push(well.lat);
         allWellLngs.push(well.lng);
@@ -316,7 +318,7 @@ export async function runRasterAnalysis(
 
     for (const [, { well, values }] of wellInterp) {
       const val = values[ti];
-      if (val !== null) {
+      if (val !== null && Number.isFinite(val)) {
         activeLats.push(well.lat);
         activeLngs.push(well.lng);
         activeValues.push(val);

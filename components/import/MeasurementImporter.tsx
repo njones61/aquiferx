@@ -481,18 +481,23 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
     setFile({ ...file, mapping: { ...file.mapping, [key]: value } });
   };
 
-  // Build an UploadedFile from validated USGS measurements
+  // Build an UploadedFile from validated USGS measurements.
+  // USGS 72019 is depth to water below land surface (negative = artesian,
+  // water above surface), so WTE = GSE − depth. Wells without a usable GSE
+  // are filtered out at download time; the guard here is a backstop so a
+  // raw depth can never be written into an elevation series.
   const buildUSGSFile = (measurements: USGSMeasurement[], label: string) => {
-    const rows = measurements.map(m => {
+    const rows: { well_id: string; date: string; value: string; aquifer_id: string }[] = [];
+    for (const m of measurements) {
       const gse = wellGseMap[m.siteId] || 0;
-      const wteValue = gse > 0 ? Math.round((gse - Math.abs(m.value)) * 100) / 100 : m.value;
-      return {
+      if (gse <= 0) continue;
+      rows.push({
         well_id: m.siteId,
         date: m.date,
-        value: String(wteValue),
+        value: String(Math.round((gse - m.value) * 100) / 100),
         aquifer_id: singleUnit ? '0' : (wellAquiferMap[m.siteId] || '')
-      };
-    });
+      });
+    }
     setFile({
       name: label,
       data: rows,
@@ -543,9 +548,10 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
 
       setUsgsProgress({ completed: 0, total: usgsSiteIds.length, done: false });
 
+      const batchErrors: string[] = [];
       const rawMeasurements = await fetchUSGSMeasurements(usgsSiteIds, (completed, total) => {
         setUsgsProgress({ completed, total, done: false });
-      });
+      }, msg => batchErrors.push(msg));
 
       // Remap siteIds back to wells.csv well_id format
       for (const m of rawMeasurements) {
@@ -553,7 +559,25 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       }
 
       // Validate and clean data
-      const { measurements, report } = validateUSGSMeasurements(rawMeasurements);
+      const { measurements: validated, report } = validateUSGSMeasurements(rawMeasurements);
+
+      // Drop records whose well has no usable GSE — depth-to-water can't be
+      // converted to an elevation without it, and storing the raw depth
+      // would silently mix units within one series
+      const measurements = validated.filter(m => (wellGseMap[m.siteId] || 0) > 0);
+      const noGseCount = validated.length - measurements.length;
+      if (noGseCount > 0) {
+        report.dropped.count += noGseCount;
+        report.dropped.details.push(`${noGseCount} record(s) from wells without a ground surface elevation (cannot convert depth to WTE)`);
+      }
+
+      // Surface batches that failed to download — previously these were
+      // dropped with only a console.warn while the UI reported success
+      if (batchErrors.length > 0) {
+        report.dropped.count += batchErrors.length;
+        report.dropped.details.push(...batchErrors);
+      }
+
       setQualityReport(report);
       setRawUSGSMeasurements(measurements);
 
@@ -1297,10 +1321,14 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       if (res.ok) {
         const text = await res.text();
         const { rows: existingRows } = parseCSV(text);
+        // Key on well_id|date only (matching the in-batch dedup and
+        // full-refresh merge): including aquifer_id re-appends the same
+        // measurement whenever a re-import resolves the aquifer differently
+        // (e.g. existing rows have a blank aquifer_id)
         const existingKeys = new Set(
-          existingRows.map(r => `${r.well_id}|${r.date}|${r.aquifer_id}`)
+          existingRows.map(r => `${r.well_id}|${r.date}`)
         );
-        const toAdd = newRows.filter(r => !existingKeys.has(`${r.well_id}|${r.date}|${r.aquifer_id}`));
+        const toAdd = newRows.filter(r => !existingKeys.has(`${r.well_id}|${r.date}`));
 
         return [
           ...existingRows.map(r => ({

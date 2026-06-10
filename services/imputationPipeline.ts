@@ -85,7 +85,9 @@ export async function runImputationPipeline(
 
   let gldas: GldasFeatures;
   try {
-    gldas = await fetchGldasFeatures(aquifer.id, aquifer.geojson, input.gldasStartDate, input.gldasEndDate);
+    // Cache key must include the region — every single-unit region uses
+    // aquifer_id=0, so a bare aquifer id collides across regions
+    gldas = await fetchGldasFeatures(`${region.id}:${aquifer.id}`, aquifer.geojson, input.gldasStartDate, input.gldasEndDate);
     onLog(`GLDAS data loaded: ${gldas.dates.length} monthly records, range ${gldas.dates[0]} to ${gldas.dates[gldas.dates.length - 1]}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
