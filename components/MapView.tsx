@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { Layers, ChevronRight, Search } from 'lucide-react';
 import { Region, Aquifer, Well, Measurement } from '../types';
 import { isPointInGeoJSON } from '../utils/geo';
+import { useRasterFrame } from '../contexts/RasterFrameContext';
 
 const BASEMAPS = {
   'OpenStreetMap': {
@@ -54,7 +55,10 @@ interface MapViewProps {
   selectedDataType?: string;
   wellColors?: Map<string, string> | null;
   aquiferColors?: Map<string, string> | null;
-  rasterActiveWellIds?: Set<string> | null;
+  // Eligible-well time ranges for the active raster (null when the
+  // Active Wells toggle is off). The per-frame active set is derived
+  // here from the playback-frame context.
+  wellTimeRanges?: Map<string, [number, number]> | null;
   onRegionClick: (r: Region) => void;
   onAquiferClick: (a: Aquifer) => void;
   onWellClick: (w: Well, shiftKey: boolean) => void;
@@ -79,7 +83,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   selectedDataType = 'wte',
   wellColors,
   aquiferColors,
-  rasterActiveWellIds,
+  wellTimeRanges,
   onRegionClick,
   onAquiferClick,
   onWellClick,
@@ -88,6 +92,19 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   onShowWellIdsChange,
   onDateFilterChange
 }, ref) => {
+  // Per-frame active wells: frame date tested against precomputed ranges.
+  // Reading the frame from context here (instead of receiving the active
+  // set from App) keeps the 500ms playback tick from re-rendering App.
+  const rasterFrame = useRasterFrame();
+  const rasterActiveWellIds = useMemo<Set<string> | null>(() => {
+    if (!wellTimeRanges || !rasterFrame) return null;
+    const active = new Set<string>();
+    for (const [wellId, [minT, maxT]] of wellTimeRanges) {
+      if (rasterFrame.dateTs >= minT && rasterFrame.dateTs <= maxT) active.add(wellId);
+    }
+    return active;
+  }, [wellTimeRanges, rasterFrame]);
+
   // Per-well stats for the active data type (keyed by
   // regionId:aquiferId:wellId), computed in ONE pass — counts, the default
   // filter year, and the date filter all derive from this instead of each

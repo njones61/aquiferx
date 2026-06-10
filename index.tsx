@@ -2,6 +2,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { RasterFrameProvider } from './contexts/RasterFrameContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -11,6 +12,9 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    {/* Above App so 500ms playback frame updates bypass the App tree */}
+    <RasterFrameProvider>
+      <App />
+    </RasterFrameProvider>
   </React.StrictMode>
 );

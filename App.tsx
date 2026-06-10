@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import JSZip from 'jszip';
 import ExpandedChartWindow from './components/ExpandedChartWindow';
+import { RasterFrame, useRasterFrameSetter } from './contexts/RasterFrameContext';
 import {
   TREND_THRESHOLDS_FT, TREND_THRESHOLDS_M, AQUIFER_TREND_THRESHOLDS_FT, AQUIFER_TREND_THRESHOLDS_M,
   TREND_CATEGORIES, INSUFFICIENT_COLOR, MS_PER_YEAR, computeSlope, classifySlope, median,
@@ -81,7 +82,10 @@ const App: React.FC = () => {
   const [showCombinedModel, setShowCombinedModel] = useState(false);
   const [crossSectionProfile, setCrossSectionProfile] = useState<CrossSectionProfile | null>(null);
   const [activeTimeSeriesTab, setActiveTimeSeriesTab] = useState<'waterLevel' | 'storageChange' | 'rasterStats' | 'crossSection'>('waterLevel');
-  const [rasterFrameDate, setRasterFrameDate] = useState<{ date: string; dateTs: number } | null>(null);
+  // Playback frame state lives in RasterFrameContext (provider above App)
+  // so 500ms ticks don't re-render this whole component — see
+  // contexts/RasterFrameContext.tsx
+  const setRasterFrame = useRasterFrameSetter();
   const [showActiveWells, setShowActiveWells] = useState(false);
   const [storageCoeff, setStorageCoeff] = useState(0.1);
   const [storageVolumeUnit, setStorageVolumeUnit] = useState('');
@@ -384,13 +388,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRasterFrameChange = useCallback((date: string, dateTs: number) => {
-    setRasterFrameDate(prev => {
-      if (prev && prev.date === date && prev.dateTs === dateTs) return prev;
-      return { date, dateTs };
-    });
-  }, []);
-
   const handleCrossSectionChange = useCallback((profile: CrossSectionProfile | null) => {
     setCrossSectionProfile(profile);
   }, []);
@@ -660,16 +657,9 @@ const App: React.FC = () => {
     return ranges;
   }, [showActiveWells, rasterResult, filteredWells, measurements]);
 
-  // Cheap per-frame check: just test frame date against precomputed ranges
-  const rasterActiveWellIds = useMemo<Set<string> | null>(() => {
-    if (!wellTimeRanges || !rasterFrameDate) return null;
-    const frameTs = rasterFrameDate.dateTs;
-    const active = new Set<string>();
-    for (const [wellId, [minT, maxT]] of wellTimeRanges) {
-      if (frameTs >= minT && frameTs <= maxT) active.add(wellId);
-    }
-    return active;
-  }, [wellTimeRanges, rasterFrameDate]);
+  // The cheap per-frame active-well check (frame date vs these ranges)
+  // happens inside MapView, which reads the frame from context — keeping
+  // it here would re-render all of App on every playback tick.
 
   const allRasterResults = useMemo(() => {
     if (!rasterResult) return [];
@@ -1270,7 +1260,7 @@ const App: React.FC = () => {
               selectedDataType={selectedDataType}
               wellColors={showTrends ? trendColors : null}
               aquiferColors={showTrends && !selectedAquifer ? aquiferTrendColors : null}
-              rasterActiveWellIds={rasterActiveWellIds}
+              wellTimeRanges={wellTimeRanges}
               onRegionClick={(r) => {
                 if (selectedRegion?.id === r.id) {
                   // Clicking the already-selected region: deselect aquifer (if any) or clear wells
@@ -1301,7 +1291,7 @@ const App: React.FC = () => {
             {selectedAquifer && showWellsOnMap && !(showTrends && (trendColors || aquiferTrendColors)) && (
               <div className="absolute top-20 left-2 z-[90] bg-white rounded-lg shadow-lg border border-slate-200 p-3" style={{ width: '180px' }}>
                 <div className="text-xs font-semibold text-slate-700 mb-2">Wells</div>
-                {rasterActiveWellIds ? (
+                {wellTimeRanges ? (
                   <>
                     <div className="flex items-center gap-2 py-0.5">
                       <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: '#22c55e' }} />
@@ -1370,7 +1360,7 @@ const App: React.FC = () => {
                 analysis={rasterResult}
                 map={mapViewRef.current.getMap()!}
                 onClose={handleUnloadRaster}
-                onFrameChange={handleRasterFrameChange}
+                onFrameChange={setRasterFrame}
                 lengthUnit={selectedRegion?.lengthUnit || 'ft'}
                 onCrossSectionChange={handleCrossSectionChange}
                 dataTypeName={activeDataType.name}
@@ -1659,7 +1649,7 @@ const App: React.FC = () => {
                         </div>
                       ) : (
                         <div className="text-[10px] text-slate-400">
-                          {rasterFrameDate?.date || ''}
+                          <RasterFrame>{frame => frame?.date || ''}</RasterFrame>
                         </div>
                       )}
                     </div>
@@ -1693,37 +1683,44 @@ const App: React.FC = () => {
                         showGSE={showGSE && activeDataType.code === 'wte'}
                       />
                     ) : effectiveTab === 'waterLevel' ? (
-                      <TimeSeriesChart
-                        measurements={selectedWellMeasurements}
-                        selectedWells={selectedWells}
-                        showGSE={showGSE && activeDataType.code === 'wte'}
-                        showTrendLine={showTrendLine}
-                        showSmooth={showSmooth}
-                        smoothMonths={smoothMonths}
-                        usePCHIP={usePCHIP}
-                        dataType={activeDataType}
-                        lengthUnit={selectedRegion?.lengthUnit || 'ft'}
-                        onEditMeasurement={handleChartEditMeasurement}
-                        onDeleteMeasurement={handleChartDeleteMeasurement}
-                        referenceDate={rasterResult && rasterFrameDate ? rasterFrameDate.dateTs : undefined}
-                        rasterTimeRange={rasterTimeRange}
-                        trendWindowStart={trendWindowStart}
-                        dateFilter={dateFilter}
-                      />
+                      <RasterFrame>{frame => (
+                        <TimeSeriesChart
+                          measurements={selectedWellMeasurements}
+                          selectedWells={selectedWells}
+                          showGSE={showGSE && activeDataType.code === 'wte'}
+                          showTrendLine={showTrendLine}
+                          showSmooth={showSmooth}
+                          smoothMonths={smoothMonths}
+                          usePCHIP={usePCHIP}
+                          dataType={activeDataType}
+                          lengthUnit={selectedRegion?.lengthUnit || 'ft'}
+                          onEditMeasurement={handleChartEditMeasurement}
+                          onDeleteMeasurement={handleChartDeleteMeasurement}
+                          referenceDate={rasterResult && frame ? frame.dateTs : undefined}
+                          rasterTimeRange={rasterTimeRange}
+                          trendWindowStart={trendWindowStart}
+                          dateFilter={dateFilter}
+                        />
+                      )}</RasterFrame>
                     ) : effectiveTab === 'rasterStats' && rasterResult?.stats ? (
-                      <RasterStatsChart
-                        stats={rasterResult.stats}
-                        dataTypeName={activeDataType.name}
-                        dataTypeUnit={activeDataType.unit}
-                        referenceDate={rasterFrameDate?.dateTs}
-                      />
+                      <RasterFrame>{frame => (
+                        <RasterStatsChart
+                          stats={rasterResult.stats!}
+                          dataTypeName={activeDataType.name}
+                          dataTypeUnit={activeDataType.unit}
+                          referenceDate={frame?.dateTs}
+                        />
+                      )}</RasterFrame>
                     ) : effectiveTab === 'crossSection' && crossSectionProfile ? (
-                      <CrossSectionChart
-                        profile={crossSectionProfile}
-                        frameIdx={crossSectionProfile.frameDates.indexOf(rasterFrameDate?.date || crossSectionProfile.frameDates[0])}
-                        lengthUnit={selectedRegion?.lengthUnit || 'ft'}
-                      />
+                      <RasterFrame>{frame => (
+                        <CrossSectionChart
+                          profile={crossSectionProfile}
+                          frameIdx={crossSectionProfile.frameDates.indexOf(frame?.date || crossSectionProfile.frameDates[0])}
+                          lengthUnit={selectedRegion?.lengthUnit || 'ft'}
+                        />
+                      )}</RasterFrame>
                     ) : rasterResult && storageChartData.length > 0 && (
+                      <RasterFrame>{frame => (
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={storageChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -1776,11 +1773,12 @@ const App: React.FC = () => {
                               connectNulls
                             />
                           ))}
-                          {rasterFrameDate && (
-                            <ReferenceLine x={rasterFrameDate.dateTs} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1.5} />
+                          {frame && (
+                            <ReferenceLine x={frame.dateTs} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1.5} />
                           )}
                         </LineChart>
                       </ResponsiveContainer>
+                      )}</RasterFrame>
                     )}
                   </div>
                   </div>
@@ -1901,23 +1899,25 @@ const App: React.FC = () => {
           }`}
           subtitle={`Units: ${activeDataType.unit === 'm' ? 'Meters' : activeDataType.unit === 'ft' ? 'Feet' : activeDataType.unit} (${activeDataType.code.toUpperCase()})`}
         >
-          <TimeSeriesChart
-            measurements={selectedWellMeasurements}
-            selectedWells={selectedWells}
-            showGSE={showGSE && activeDataType.code === 'wte'}
-            showTrendLine={showTrendLine}
-            showSmooth={showSmooth}
-            smoothMonths={smoothMonths}
-            dataType={activeDataType}
-            lengthUnit={selectedRegion?.lengthUnit || 'ft'}
-            onEditMeasurement={handleChartEditMeasurement}
-            onDeleteMeasurement={handleChartDeleteMeasurement}
-            referenceDate={rasterResult && rasterFrameDate ? rasterFrameDate.dateTs : undefined}
-            rasterTimeRange={rasterTimeRange}
-            trendWindowStart={trendWindowStart}
-            dateFilter={dateFilter}
-            onEscapeUnhandled={() => setIsChartExpanded(false)}
-          />
+          <RasterFrame>{frame => (
+            <TimeSeriesChart
+              measurements={selectedWellMeasurements}
+              selectedWells={selectedWells}
+              showGSE={showGSE && activeDataType.code === 'wte'}
+              showTrendLine={showTrendLine}
+              showSmooth={showSmooth}
+              smoothMonths={smoothMonths}
+              dataType={activeDataType}
+              lengthUnit={selectedRegion?.lengthUnit || 'ft'}
+              onEditMeasurement={handleChartEditMeasurement}
+              onDeleteMeasurement={handleChartDeleteMeasurement}
+              referenceDate={rasterResult && frame ? frame.dateTs : undefined}
+              rasterTimeRange={rasterTimeRange}
+              trendWindowStart={trendWindowStart}
+              dateFilter={dateFilter}
+              onEscapeUnhandled={() => setIsChartExpanded(false)}
+            />
+          )}</RasterFrame>
         </ExpandedChartWindow>
       )}
     </div>
