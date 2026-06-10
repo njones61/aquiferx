@@ -219,7 +219,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [editing]);
 
-  // External selection sync: auto-expand when selection changes from outside (e.g. map clicks)
+  // External selection sync: auto-expand when selection changes from outside (e.g. map clicks).
+  // When selection is cleared (e.g. the Home breadcrumb), collapse the tree.
   useEffect(() => {
     if (selectedRegion) {
       setExpandedRegionIds(prev => {
@@ -228,6 +229,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         next.add(selectedRegion.id);
         return next;
       });
+    } else {
+      setExpandedRegionIds(prev => (prev.size === 0 ? prev : new Set()));
+      setExpandedAquiferIds(prev => (prev.size === 0 ? prev : new Set()));
     }
   }, [selectedRegion?.id]);
 
