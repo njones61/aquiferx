@@ -438,6 +438,25 @@ export async function runRasterAnalysis(
     });
   }
 
+  // Trim leading/trailing all-null frames (stats are index-aligned, so
+  // they trim together). Wells only contribute within their own
+  // measurement span, so a date range wider than the data produces empty
+  // frames that render as a blank map with no explanation.
+  const firstData = frames.findIndex(f => f.values.some(v => v !== null));
+  if (firstData === -1) {
+    throw new Error('Every timestep came out empty — no well has qualifying data inside the selected date range. Check the date range and the min observations / time span filters.');
+  }
+  let lastData = frames.length - 1;
+  while (lastData > firstData && !frames[lastData].values.some(v => v !== null)) lastData--;
+  const trimmedCount = frames.length - (lastData - firstData + 1);
+  if (trimmedCount > 0) {
+    console.log(`[RasterAnalysis] Trimmed ${trimmedCount} empty frame(s) outside the data span (kept ${frames[firstData].date} – ${frames[lastData].date})`);
+    frames.splice(lastData + 1);
+    frames.splice(0, firstData);
+    stats.splice(lastData + 1);
+    stats.splice(0, firstData);
+  }
+
   onProgress('Saving results...', 85);
   await tick();
 

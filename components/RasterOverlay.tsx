@@ -285,6 +285,10 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
     [minLat + ny * dy, minLng + nx * dx]
   ], [minLat, minLng, ny, dy, nx, dx]);
 
+  // Older rasters may contain all-null frames (date range wider than the
+  // well data span) — flag them so a blank map is explained
+  const frameHasData = useMemo(() => frames.map(f => f.values.some(v => v !== null)), [frames]);
+
   // Render a frame to canvas and update overlay + contours
   const renderFrame = useCallback((idx: number) => {
     if (idx >= frames.length) return;
@@ -720,6 +724,10 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
           className="w-48 h-1.5 accent-emerald-500" />
 
         <span className="text-xs font-medium text-slate-700 min-w-[80px]">{currentDate}</span>
+
+        {frameHasData[frameIdx] === false && (
+          <span className="text-[11px] font-semibold text-amber-600 whitespace-nowrap">No well data for this date</span>
+        )}
 
         <button onClick={onClose}
           className="p-1 hover:bg-slate-100 rounded transition-colors ml-2">
