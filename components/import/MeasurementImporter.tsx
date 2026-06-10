@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, Calendar, MapPin, Wand2, BookOpen, FlaskConical } from 'lucide-react';
-import { processUploadedFile, UploadedFile, saveFiles, parseDate, detectDateFormat, parseCSV, toCsv, WELLS_CSV_HEADERS, isInUS, freshFetch, assignWellToAquifer, DATE_FORMATS } from '../../services/importUtils';
+import { processUploadedFile, UploadedFile, saveFiles, SaveFileEntry, parseDate, detectDateFormat, parseCSV, toCsv, WELLS_CSV_HEADERS, isInUS, freshFetch, assignWellToAquifer, DATE_FORMATS } from '../../services/importUtils';
 import { fetchUSGSMeasurements, validateUSGSMeasurements, USGSDataQualityReport, USGSMeasurement, USGSDataSpan, computeDataSpan, filterByDateRange, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { loadCatalog } from '../../services/catalog';
 import { compareNames } from '../../utils/strings';
@@ -1032,7 +1032,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
 
       // --- Well resolution: build a per-row wellId that accounts for match
       // results (existing wells) and new wells created during import ----
-      const filesToSave: { path: string; content: string }[] = [];
+      const filesToSave: SaveFileEntry[] = [];
       const rowIdentityKey = (r: Record<string, string>): string => {
         const id = wellIdCol ? (r[wellIdCol] || '').trim() : '';
         const name = wellNameCol ? (r[wellNameCol] || '').trim() : '';
@@ -1195,22 +1195,23 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
 
         // Merge/overwrite depends on source and mode. USGS downloads are
         // always single-type wte, so the usgsMode cases never apply to a
-        // multi-type import.
-        if (dataSource === 'usgs') {
-          if (usgsMode === 'fresh' && importMode === 'replace') {
-            // Overwrite — no merge needed
-          } else if (usgsMode === 'full-refresh') {
-            processed = await mergeTypeWithExisting(typeCode, processed, 'full-refresh');
-          } else {
-            processed = await mergeTypeWithExisting(typeCode, processed, 'append');
-          }
-        } else if (importMode === 'append') {
-          processed = await mergeTypeWithExisting(typeCode, processed, 'append');
+        // multi-type import. Merged saves carry an optimistic-lock
+        // precondition; intentional overwrites (fresh+replace) don't.
+        let precondition: { ifUnmodifiedSince?: string; mustNotExist?: boolean } = {};
+        const mergeMode: 'append' | 'full-refresh' | null =
+          dataSource === 'usgs'
+            ? (usgsMode === 'fresh' && importMode === 'replace' ? null : usgsMode === 'full-refresh' ? 'full-refresh' : 'append')
+            : (importMode === 'append' ? 'append' : null);
+        if (mergeMode) {
+          const merged = await mergeTypeWithExisting(typeCode, processed, mergeMode);
+          processed = merged.rows;
+          precondition = { ifUnmodifiedSince: merged.ifUnmodifiedSince, mustNotExist: merged.mustNotExist };
         }
 
         filesToSave.push({
           path: `${regionId}/data_${typeCode}.csv`,
           content: toCsv(MEASUREMENT_CSV_HEADERS, processed),
+          ...precondition,
         });
       }
 
@@ -1228,10 +1229,16 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       // --- Persist new wells (if any) by appending to wells.csv ---
       if (newWellRecords.length > 0) {
         let existingRows: Record<string, string>[] = [];
+        let wellsPrecondition: { ifUnmodifiedSince?: string; mustNotExist?: boolean } = { mustNotExist: true };
         try {
           const res = await freshFetch(`/data/${regionId}/wells.csv`);
-          if (res.ok) existingRows = parseCSV(await res.text()).rows;
-        } catch {}
+          if (res.ok) {
+            wellsPrecondition = { ifUnmodifiedSince: res.headers.get('last-modified') || undefined };
+            existingRows = parseCSV(await res.text()).rows;
+          }
+        } catch {
+          wellsPrecondition = {};
+        }
         const aquiferNameById = new Map<string, string>(aquiferList.map(a => [a.id, a.name]));
         const newRows = newWellRecords.map(w => ({
           well_id: w.well_id,
@@ -1245,6 +1252,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         filesToSave.push({
           path: `${regionId}/wells.csv`,
           content: toCsv(WELLS_CSV_HEADERS, [...existingRows, ...newRows]),
+          ...wellsPrecondition,
         });
       }
 
@@ -1279,22 +1287,31 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   };
 
   // Fetch the existing data file (if any) and merge per the given mode —
-  // the merge math itself lives in services/measurementImport.
+  // the merge math itself lives in services/measurementImport. Also
+  // returns the optimistic-lock precondition for the save: the file's
+  // Last-Modified as read, or mustNotExist when there was no file, so a
+  // concurrent import in another tab can't be silently overwritten.
   const mergeTypeWithExisting = async (
     typeCode: string,
     newRows: MeasurementRow[],
     mode: 'append' | 'full-refresh'
-  ): Promise<MeasurementRow[]> => {
+  ): Promise<{ rows: MeasurementRow[]; ifUnmodifiedSince?: string; mustNotExist?: boolean }> => {
     try {
       const res = await freshFetch(`/data/${regionId}/data_${typeCode}.csv`);
       if (res.ok) {
+        const ifUnmodifiedSince = res.headers.get('last-modified') || undefined;
         const { rows: existingRows } = parseCSV(await res.text());
-        return mode === 'append'
-          ? mergeAppend(existingRows, newRows)
-          : mergeFullRefresh(existingRows, newRows);
+        return {
+          rows: mode === 'append'
+            ? mergeAppend(existingRows, newRows)
+            : mergeFullRefresh(existingRows, newRows),
+          ifUnmodifiedSince,
+        };
       }
-    } catch {}
-    return newRows;
+      return { rows: newRows, mustNotExist: true };
+    } catch {
+      return { rows: newRows };
+    }
   };
 
   const handleSave = () => {

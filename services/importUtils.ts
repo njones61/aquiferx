@@ -383,12 +383,32 @@ export async function processUploadedFile(
 }
 
 // Save files via API
-export async function saveFiles(files: { path: string; content: string }[]): Promise<void> {
+export interface SaveFileEntry {
+  path: string;
+  content: string;
+  /** Optimistic lock: the Last-Modified header captured when this file was
+   *  read. The save is rejected (409) if the file changed since — e.g. a
+   *  concurrent import in another tab. */
+  ifUnmodifiedSince?: string;
+  /** Optimistic lock for creations: the client read a 404, so the save is
+   *  rejected if the file now exists. */
+  mustNotExist?: boolean;
+}
+
+export async function saveFiles(files: SaveFileEntry[]): Promise<void> {
   const res = await fetch('/api/save-data', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ files })
   });
+  if (res.status === 409) {
+    const body = await res.json().catch(() => ({ conflicts: [] }));
+    const names = (body.conflicts || []).map((p: string) => p.split('/').pop()).join(', ');
+    throw new Error(
+      `The data on disk changed while you were working (${names}) — likely a concurrent import or another tab. ` +
+      `Nothing was saved. Close and re-open this dialog to load the latest data, then try again.`
+    );
+  }
   if (!res.ok) throw new Error(await res.text());
 }
 

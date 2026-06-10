@@ -474,12 +474,25 @@ function saveDataPlugin(): Plugin {
           return;
         }
         try {
-          const { files } = await readJsonBody<{ files: { path: string; content: string }[] }>(req);
+          const { files } = await readJsonBody<{
+            files: {
+              path: string;
+              content: string;
+              // Optimistic-lock preconditions for read-modify-write saves:
+              // ifUnmodifiedSince = the Last-Modified the client saw when it
+              // read the file; mustNotExist = the client read a 404 and is
+              // creating it. Either failing means another tab/operation
+              // changed the file since the client read it.
+              ifUnmodifiedSince?: string;
+              mustNotExist?: boolean;
+            }[];
+          }>(req);
           const dataDir = path.resolve(__dirname, 'public/data');
 
-          // Validate every path before writing anything, so a bad entry
-          // can't leave a multi-file save half-applied
+          // Validate every path and precondition before writing anything,
+          // so a bad entry can't leave a multi-file save half-applied
           const resolved: { filePath: string; content: string }[] = [];
+          const conflicts: string[] = [];
           for (const file of files) {
             const filePath = path.resolve(dataDir, file.path);
             // Safety: ensure we're writing inside public/data (the path.sep
@@ -489,7 +502,28 @@ function saveDataPlugin(): Plugin {
               res.end(`Invalid path: ${file.path}`);
               return;
             }
+
+            if (file.mustNotExist && fs.existsSync(filePath)) {
+              conflicts.push(file.path);
+            } else if (file.ifUnmodifiedSince) {
+              const since = Date.parse(file.ifUnmodifiedSince);
+              if (!isNaN(since)) {
+                let mtimeMs: number | null = null;
+                try { mtimeMs = (await fs.promises.stat(filePath)).mtimeMs; } catch { /* deleted since read */ }
+                // Last-Modified has 1s resolution — compare at whole seconds
+                if (mtimeMs === null || Math.floor(mtimeMs / 1000) * 1000 > since) {
+                  conflicts.push(file.path);
+                }
+              }
+            }
             resolved.push({ filePath, content: file.content });
+          }
+
+          if (conflicts.length > 0) {
+            res.statusCode = 409;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: false, conflicts }));
+            return;
           }
 
           // Async writes so large saves don't block the dev server's
