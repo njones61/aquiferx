@@ -144,16 +144,21 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
 
   const loadRegions = async () => {
     setIsLoading(true);
-    let cat = catalog;
-    if (!cat) {
-      try {
-        cat = await loadCatalog();
-        setCatalog(cat);
-      } catch {}
+    try {
+      let cat = catalog;
+      if (!cat) {
+        try {
+          cat = await loadCatalog();
+          setCatalog(cat);
+        } catch {}
+      }
+      const list = await fetchRegionList(cat);
+      setRegionList(list);
+    } catch (err) {
+      console.warn('Failed to load region list:', err);
+    } finally {
+      setIsLoading(false);
     }
-    const list = await fetchRegionList(cat);
-    setRegionList(list);
-    setIsLoading(false);
   };
 
   useEffect(() => { loadRegions(); }, []);

@@ -29,6 +29,7 @@ interface SidebarProps {
   onGetRasterInfo?: (meta: RasterAnalysisMeta) => void;
   modelMeta: ImputationModelMeta[];
   activeModelCode: string | null;
+  loadingModelCode: string | null;
   onLoadModel: (meta: ImputationModelMeta) => void;
   onUnloadModel: () => void;
   onDeleteModel: (meta: ImputationModelMeta) => void;
@@ -73,6 +74,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onGetRasterInfo,
   modelMeta,
   activeModelCode,
+  loadingModelCode,
   onLoadModel,
   onUnloadModel,
   onDeleteModel,
@@ -635,6 +637,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const renderModelRow = (m: ImputationModelMeta) => {
     const isActive = activeModelCode === m.code;
+    const isModelLoading = loadingModelCode === m.code;
     const modelMenuKey = `model-${m.regionId}-${m.code}`;
     const isModelMenuOpen = menuOpen === modelMenuKey;
     const isModelConfirming = confirmDelete === modelMenuKey;
@@ -733,7 +736,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            <Activity size={12} className={`flex-shrink-0 ${isActive ? 'text-amber-500' : 'text-slate-300'}`} />
+            {isModelLoading
+              ? <Loader2 size={12} className="flex-shrink-0 animate-spin" />
+              : <Activity size={12} className={`flex-shrink-0 ${isActive ? 'text-amber-500' : 'text-slate-300'}`} />}
             <span className="truncate">{m.title}</span>
             {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />}
           </button>

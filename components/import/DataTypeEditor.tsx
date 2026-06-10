@@ -102,11 +102,16 @@ const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
 
   const persistTypes = async (updatedTypes: DataType[]) => {
     setIsSaving(true);
-    const meta: RegionMeta = { id: regionId, name: regionName, lengthUnit, singleUnit, customDataTypes: updatedTypes };
-    await saveFiles([{ path: `${regionId}/region.json`, content: JSON.stringify(meta, null, 2) }]);
-    setTypes(updatedTypes);
-    onUpdate(updatedTypes);
-    setIsSaving(false);
+    try {
+      const meta: RegionMeta = { id: regionId, name: regionName, lengthUnit, singleUnit, customDataTypes: updatedTypes };
+      await saveFiles([{ path: `${regionId}/region.json`, content: JSON.stringify(meta, null, 2) }]);
+      setTypes(updatedTypes);
+      onUpdate(updatedTypes);
+    } catch (err) {
+      setCodeError(`Failed to save: ${err}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddCustom = async () => {
@@ -142,9 +147,12 @@ const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
     try {
       await deleteFile(`${regionId}/data_${deleteCode}.csv`);
     } catch {}
-    const updated = types.filter(t => t.code !== deleteCode);
-    await persistTypes(updated);
-    setDeleteCode(null);
+    try {
+      const updated = types.filter(t => t.code !== deleteCode);
+      await persistTypes(updated);
+    } finally {
+      setDeleteCode(null);
+    }
   };
 
   return (

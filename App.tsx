@@ -226,6 +226,7 @@ const App: React.FC = () => {
   const [compareRasterResults, setCompareRasterResults] = useState<RasterAnalysisResult[]>([]);
   const [rasterMeta, setRasterMeta] = useState<RasterAnalysisMeta[]>([]);
   const [loadingRasterCode, setLoadingRasterCode] = useState<string | null>(null);
+  const [loadingModelCode, setLoadingModelCode] = useState<string | null>(null);
   const [modelMeta, setModelMeta] = useState<ImputationModelMeta[]>([]);
   const [imputationDialogOpen, setImputationDialogOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ImputationModelResult | null>(null);
@@ -549,14 +550,19 @@ const App: React.FC = () => {
       setCompareRasterResults(prev => prev.filter((_, i) => i !== existingIdx));
       return;
     }
+    setLoadingRasterCode(meta.code);
     try {
       const res = await fetch(`/data/${meta.filePath}`);
       if (res.ok) {
         const fullResult: RasterAnalysisResult = await res.json();
         setCompareRasterResults(prev => [...prev, fullResult]);
+      } else {
+        console.error(`Failed to load raster for comparison: HTTP ${res.status}`);
       }
     } catch (e) {
       console.error('Failed to load raster for comparison:', e);
+    } finally {
+      setLoadingRasterCode(null);
     }
   };
 
@@ -621,6 +627,7 @@ const App: React.FC = () => {
   // --- Imputation model handlers ---
   const handleLoadModel = async (meta: ImputationModelMeta) => {
     loadingModelRef.current = true;
+    setLoadingModelCode(meta.code);
     try {
       const res = await fetch(`/data/${meta.filePath}`);
       if (res.ok) {
@@ -634,11 +641,14 @@ const App: React.FC = () => {
         if (meta.dataType !== selectedDataTypeRef.current) {
           setSelectedDataType(meta.dataType);
         }
+      } else {
+        console.error(`Failed to load model: HTTP ${res.status}`);
       }
     } catch (e) {
       console.error('Failed to load model:', e);
     } finally {
       loadingModelRef.current = false;
+      setLoadingModelCode(null);
     }
   };
 
@@ -689,15 +699,17 @@ const App: React.FC = () => {
     }
   };
 
-  const handleOpenImputationWizard = async () => {
-    // Pre-fetch GLDAS date range
-    try {
-      const range = await fetchGldasDateRange();
-      setGldasDateRange(range);
-    } catch (e) {
-      console.warn('Could not pre-fetch GLDAS date range:', e);
-    }
+  const handleOpenImputationWizard = () => {
+    // Open immediately; fetch the GLDAS date range in the background.
+    // Awaiting it first made the button appear dead for up to 15s when the
+    // GLDAS service is slow — the wizard already handles a null range and
+    // back-fills once it arrives.
     setImputationDialogOpen(true);
+    if (!gldasDateRange) {
+      fetchGldasDateRange()
+        .then(range => setGldasDateRange(range))
+        .catch(e => console.warn('Could not fetch GLDAS date range:', e));
+    }
   };
 
   // Active data type object
@@ -1206,6 +1218,7 @@ const App: React.FC = () => {
         onGetRasterInfo={handleGetRasterInfo}
         modelMeta={modelMeta}
         activeModelCode={selectedModel?.code || null}
+        loadingModelCode={loadingModelCode}
         onLoadModel={handleLoadModel}
         onUnloadModel={handleUnloadModel}
         onDeleteModel={handleDeleteModel}
