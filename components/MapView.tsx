@@ -617,8 +617,9 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     if (!showWellIds && !showWellNames) return;
     if (!selectedAquifer) return;
 
+    const wellById = new Map<string, Well>(wells.map(w => [w.id, w]));
     wellMarkerMapRef.current.forEach((marker, wellId) => {
-      const well = wells.find(w => w.id === wellId);
+      const well = wellById.get(wellId);
       if (!well) return;
 
       let text = '';

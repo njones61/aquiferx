@@ -243,19 +243,27 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
     return ramp ? ramp.lut : COLOR_RAMPS[0].lut;
   }, [selectedRamp]);
 
-  // Compute color range using 2nd–98th percentile (masked cells excluded)
+  // Compute color range using 2nd–98th percentile (masked cells excluded).
+  // Sampled at a stride: collecting and sorting every cell of every frame
+  // (potentially millions of values) stalled the tab the moment a large
+  // raster loaded, and a uniform sample gives the same color range.
   const { globalMin, globalMax } = useMemo(() => {
-    const allVals: number[] = [];
+    let total = 0;
+    for (const frame of frames) total += frame.values.length;
+    const stride = Math.max(1, Math.floor(total / 200_000));
+
+    const vals: number[] = [];
+    let k = 0;
     for (const frame of frames) {
       for (let i = 0; i < frame.values.length; i++) {
         const v = frame.values[i];
-        if (v !== null && mask[i] === 1) allVals.push(v);
+        if (v !== null && mask[i] === 1 && k++ % stride === 0) vals.push(v);
       }
     }
-    if (allVals.length === 0) return { globalMin: 0, globalMax: 1 };
-    allVals.sort((a, b) => a - b);
-    const p2 = allVals[Math.floor(allVals.length * 0.02)];
-    const p98 = allVals[Math.ceil(allVals.length * 0.98) - 1];
+    if (vals.length === 0) return { globalMin: 0, globalMax: 1 };
+    vals.sort((a, b) => a - b);
+    const p2 = vals[Math.floor(vals.length * 0.02)];
+    const p98 = vals[Math.ceil(vals.length * 0.98) - 1];
     return { globalMin: p2, globalMax: p98 };
   }, [frames, mask]);
 

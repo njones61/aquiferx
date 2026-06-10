@@ -219,6 +219,13 @@ const App: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<{ minYear: number; maxYear: number } | null>(null);
   const [showWellIdsOnMap, setShowWellIdsOnMap] = useState(false);
   const [trendWindowYears, setTrendWindowYears] = useState(30);
+  // Memoized: an inline `Date.now() - ...` prop changes every render, which
+  // forced TimeSeriesChart to recompute regressions and rebuild the whole
+  // chart on every unrelated state change (e.g. each 500ms raster frame tick)
+  const trendWindowStart = useMemo(
+    () => (showTrends ? Date.now() - trendWindowYears * MS_PER_YEAR : undefined),
+    [showTrends, trendWindowYears]
+  );
   const [selectedDataType, setSelectedDataType] = useState<string>('wte');
   const [visibleRegionIds, setVisibleRegionIds] = useState<Set<string>>(new Set());
   const [rasterDialogOpen, setRasterDialogOpen] = useState(false);
@@ -749,22 +756,31 @@ const App: React.FC = () => {
     const minObs = opts?.temporal.minObservations ?? 2;
     const minSpanYears = opts?.temporal.minTimeSpan ?? 0;
 
-    const ranges = new Map<string, [number, number]>();
-
-    for (const w of filteredWells) {
-      const times: number[] = [];
-      for (const m of measurements) {
-        if (m.wellId !== w.id || m.regionId !== w.regionId || m.aquiferId !== w.aquiferId || m.dataType !== dataType) continue;
-        const t = new Date(m.date).getTime();
-        if (!isNaN(t)) times.push(t);
+    // Single pass over measurements (was O(wells x measurements), which
+    // froze the tab when toggling Active Wells on large datasets)
+    const byWellKey = new Map<string, { count: number; minT: number; maxT: number }>();
+    for (const m of measurements) {
+      if (m.dataType !== dataType) continue;
+      const t = new Date(m.date).getTime();
+      if (isNaN(t)) continue;
+      const key = `${m.regionId}:${m.aquiferId}:${m.wellId}`;
+      const entry = byWellKey.get(key);
+      if (entry) {
+        entry.count++;
+        if (t < entry.minT) entry.minT = t;
+        if (t > entry.maxT) entry.maxT = t;
+      } else {
+        byWellKey.set(key, { count: 1, minT: t, maxT: t });
       }
-      if (times.length < Math.max(2, minObs)) continue;
-      times.sort((a, b) => a - b);
-      const minT = times[0];
-      const maxT = times[times.length - 1];
-      const spanYears = (maxT - minT) / (365.25 * 24 * 60 * 60 * 1000);
+    }
+
+    const ranges = new Map<string, [number, number]>();
+    for (const w of filteredWells) {
+      const entry = byWellKey.get(`${w.regionId}:${w.aquiferId}:${w.id}`);
+      if (!entry || entry.count < Math.max(2, minObs)) continue;
+      const spanYears = (entry.maxT - entry.minT) / (365.25 * 24 * 60 * 60 * 1000);
       if (spanYears < minSpanYears) continue;
-      ranges.set(w.id, [minT, maxT]);
+      ranges.set(w.id, [entry.minT, entry.maxT]);
     }
     return ranges;
   }, [showActiveWells, rasterResult, filteredWells, measurements]);
@@ -1816,7 +1832,7 @@ const App: React.FC = () => {
                         onDeleteMeasurement={handleChartDeleteMeasurement}
                         referenceDate={rasterResult && rasterFrameDate ? rasterFrameDate.dateTs : undefined}
                         rasterTimeRange={rasterTimeRange}
-                        trendWindowStart={showTrends ? Date.now() - trendWindowYears * MS_PER_YEAR : undefined}
+                        trendWindowStart={trendWindowStart}
                         dateFilter={dateFilter}
                       />
                     ) : effectiveTab === 'rasterStats' && rasterResult?.stats ? (
@@ -2023,7 +2039,7 @@ const App: React.FC = () => {
             onDeleteMeasurement={handleChartDeleteMeasurement}
             referenceDate={rasterResult && rasterFrameDate ? rasterFrameDate.dateTs : undefined}
             rasterTimeRange={rasterTimeRange}
-            trendWindowStart={showTrends ? Date.now() - trendWindowYears * MS_PER_YEAR : undefined}
+            trendWindowStart={trendWindowStart}
             dateFilter={dateFilter}
             onEscapeUnhandled={() => setIsChartExpanded(false)}
           />

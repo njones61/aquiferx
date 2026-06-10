@@ -387,6 +387,14 @@ export async function runRasterAnalysis(
       }
     }
 
+    // Round to 3 decimals — full-precision doubles serialize at ~17 chars
+    // each, which made the saved JSON (and the synchronous stringify at
+    // save time) several times larger than needed
+    for (let i = 0; i < gridValues.length; i++) {
+      const v = gridValues[i];
+      if (v !== null) gridValues[i] = Math.round(v * 1000) / 1000;
+    }
+
     frames.push({ date: intervalDates[ti], values: gridValues });
   }
 

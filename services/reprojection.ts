@@ -286,20 +286,22 @@ function getProjection(crsIdentifier: string): string | null {
   return null;
 }
 
-function transformCoords(coords: any, fromProj: string): any {
+type Proj4Converter = proj4.Converter;
+
+function transformCoords(coords: any, conv: Proj4Converter): any {
   if (!Array.isArray(coords)) return coords;
   if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-    const [x, y] = proj4(fromProj, KNOWN_CRS[WGS84], [coords[0], coords[1]]);
+    const [x, y] = conv.forward([coords[0], coords[1]]);
     return coords.length > 2 ? [x, y, ...coords.slice(2)] : [x, y];
   }
-  return coords.map((c: any) => transformCoords(c, fromProj));
+  return coords.map((c: any) => transformCoords(c, conv));
 }
 
-function transformGeometry(geometry: any, fromProj: string): any {
+function transformGeometry(geometry: any, conv: Proj4Converter): any {
   if (!geometry) return geometry;
   return {
     ...geometry,
-    coordinates: transformCoords(geometry.coordinates, fromProj)
+    coordinates: transformCoords(geometry.coordinates, conv)
   };
 }
 
@@ -341,7 +343,7 @@ export function reprojectFromWKT(geojson: any, wkt: string): { geojson: any; rep
   }
 
   try {
-    const projection = proj4.Proj(wkt);
+    proj4.Proj(wkt); // validates the WKT — throws on parse failure
     return reprojectWithProj(geojson, wkt, 'Custom CRS');
   } catch (err) {
     console.warn('Failed to parse WKT, assuming WGS84:', err);
@@ -355,15 +357,20 @@ function reprojectWithProj(geojson: any, fromProj: string, fromCrs: string): { g
   // Remove CRS property (WGS84 is assumed)
   delete result.crs;
 
+  // Build the converter once — proj4(from, to, point) re-parses the CRS
+  // definition on every call, which froze the tab for seconds on
+  // detailed shapefiles (100k+ vertices)
+  const conv = proj4(fromProj, KNOWN_CRS[WGS84]);
+
   if (result.type === 'FeatureCollection') {
     result.features = result.features.map((f: any) => ({
       ...f,
-      geometry: transformGeometry(f.geometry, fromProj)
+      geometry: transformGeometry(f.geometry, conv)
     }));
   } else if (result.type === 'Feature') {
-    result.geometry = transformGeometry(result.geometry, fromProj);
+    result.geometry = transformGeometry(result.geometry, conv);
   } else if (result.coordinates) {
-    result.coordinates = transformCoords(result.coordinates, fromProj);
+    result.coordinates = transformCoords(result.coordinates, conv);
   }
 
   return { geojson: result, reprojected: true, fromCrs };

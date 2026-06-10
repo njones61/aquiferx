@@ -114,9 +114,14 @@ export function matchWells(rows: SourceWellRow[], existing: ExistingWell[], opts
     }
     // 3. Proximity match
     if (row.lat !== undefined && row.lng !== undefined && !isNaN(row.lat) && !isNaN(row.lng)) {
+      // Cheap bounding-box prefilter before the trig-heavy haversine —
+      // a full scan per row froze the import preview on large CSVs
+      const latDelta = opts.proximityMeters / 111_320;
+      const lngDelta = latDelta / Math.max(0.1, Math.cos(row.lat * Math.PI / 180));
       let nearest: { well: ExistingWell; dist: number } | null = null;
       for (const w of existing) {
         if (isNaN(w.lat) || isNaN(w.lng)) continue;
+        if (Math.abs(w.lat - row.lat) > latDelta || Math.abs(w.lng - row.lng) > lngDelta) continue;
         const d = haversineMeters(row.lat, row.lng, w.lat, w.lng);
         if (d <= opts.proximityMeters && (!nearest || d < nearest.dist)) {
           nearest = { well: w, dist: d };

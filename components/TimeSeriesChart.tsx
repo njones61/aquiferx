@@ -103,6 +103,12 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
 
     const orderedWellIds = selectedWells.map(w => w.id).filter(id => byWell.has(id));
 
+    // PCHIP densification adds ~101 synthetic timestamps per well, and the
+    // merged-row build is O(rows x wells) — for a large box selection that
+    // multiplies into hundreds of thousands of chart rows and can freeze
+    // the tab. Above this cap, plot raw measurements (linear) instead.
+    const densify = usePCHIP && orderedWellIds.length <= 25;
+
     const wellSeries = new Map<string, { interpMap: Map<number, number>; actualSet: Set<number> }>();
 
     for (const wellId of orderedWellIds) {
@@ -120,7 +126,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
 
       if (sorted.length === 1) {
         interpMap.set(xValues[0], yValues[0]);
-      } else if (!usePCHIP) {
+      } else if (!densify) {
         // Linear: just plot the raw data points
         xValues.forEach((x, i) => interpMap.set(x, yValues[i]));
       } else {
