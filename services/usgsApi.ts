@@ -147,10 +147,14 @@ export async function fetchUSGSWells(
       hasMore = false;
     } else {
       offset += limit;
-      // Termination guard: if the server ever ignores/caps `offset` and keeps
-      // returning full pages, this loop would spin forever
-      if (offset > 1_000_000) {
-        throw new Error(`USGS well pagination exceeded ${offset} records — aborting (server may be ignoring offset)`);
+      // The USGS API rejects offset > 40,000, and a region with that many
+      // wells is bigger than one import should be anyway. Fail with
+      // guidance instead of letting the server return a cryptic HTTP 400.
+      if (offset > 40_000) {
+        throw new Error(
+          `This area contains more than ${wells.length.toLocaleString()} USGS wells — too many to download at once. ` +
+          `Try a smaller area: use the "Selected Aquifer" scope, or set up the region as individual basins and download one at a time.`
+        );
       }
     }
   }
