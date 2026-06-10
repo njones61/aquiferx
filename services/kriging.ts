@@ -224,13 +224,17 @@ export function estimateVariogramParams(
   };
 }
 
-// Main export: interpolate well values to a grid using ordinary kriging (covariance formulation)
-export function krigGrid(
+// Main export: interpolate well values to a grid using ordinary kriging
+// (covariance formulation). Async: kriging a large grid synchronously can
+// freeze the tab for tens of seconds, so the cell loop periodically awaits
+// onChunk (UI repaint + cancellation check) when provided.
+export async function krigGrid(
   wellLats: number[], wellLngs: number[], wellValues: number[],
   gridLats: number[], gridLngs: number[], mask: (0 | 1)[],
   variogramParams?: { sill: number; range: number; nugget: number },
-  model: VariogramModel = 'gaussian'
-): (number | null)[] {
+  model: VariogramModel = 'gaussian',
+  onChunk?: () => Promise<void>
+): Promise<(number | null)[]> {
   if (wellLats.length === 0) return gridLats.map(() => null);
 
   // Single well: return constant value for all cells
@@ -267,11 +271,13 @@ export function krigGrid(
   let outOfRangeCount = 0;
   let nanCount = 0;
 
+  let processed = 0;
   for (let g = 0; g < gridLats.length; g++) {
     if (mask[g] === 0) {
       result[g] = null;
       continue;
     }
+    if (onChunk && ++processed % 2000 === 0) await onChunk();
 
     // Build right-hand side: spatial covariance from grid cell to each well + Lagrange
     const rhs = new Array(n + 1);

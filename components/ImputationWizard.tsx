@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { Aquifer, Region, Well, Measurement, ImputationModelResult } from '../types';
 import { runImputationPipeline, ImputationPipelineInput } from '../services/imputationPipeline';
+import { isPipelineCancelled } from '../services/pipelineCancel';
 import { slugify } from '../utils/strings';
 import PchipPreviewCanvas from './PchipPreviewCanvas';
 
@@ -175,6 +176,7 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
   const step2Valid = title.trim().length > 0 && !hasConflict;
 
   const handleRun = async () => {
+    if (step === 'running') return; // a pipeline is already in flight
     cancelledRef.current = false;
     setStep('running');
     setErrorMessage(null);
@@ -210,6 +212,7 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
             setProgressPct(pct);
           }
         },
+        () => cancelledRef.current,
       );
 
       if (!cancelledRef.current) {
@@ -218,6 +221,8 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
         setStep('complete');
       }
     } catch (err) {
+      // Cancellation throws to stop the compute — it isn't an error
+      if (isPipelineCancelled(err)) return;
       console.error('Imputation failed:', err);
       setErrorMessage(err instanceof Error ? err.message : String(err));
       setStep(2);
@@ -272,7 +277,10 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
                 })}
               </div>
             )}
-            <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+            <button
+              onClick={() => { cancelledRef.current = true; onClose(); }}
+              className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+            >
               <X size={20} className="text-slate-400" />
             </button>
           </div>

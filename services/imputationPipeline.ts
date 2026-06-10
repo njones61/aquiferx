@@ -6,6 +6,7 @@ import { fetchGldasFeatures, GldasFeatures } from './gldasFetch';
 import { trainElm, predictElm } from './elm';
 import { interpolatePCHIP } from '../utils/interpolation';
 import { slugify } from '../utils/strings';
+import { PipelineCancelledError } from './pipelineCancel';
 
 export interface ImputationPipelineInput {
   title: string;
@@ -71,8 +72,17 @@ export async function runImputationPipeline(
   measurements: Measurement[],
   onLog: (msg: string) => void,
   onProgress: (step: string, pct: number) => void,
+  isCancelled?: () => boolean,
 ): Promise<ImputationModelResult> {
   const { title, startDate, endDate, minSamples, gapSize, padSize, hiddenUnits, lambda } = input;
+
+  // Yield point: lets the UI repaint AND aborts the pipeline when the
+  // user cancelled — without this the ELM training grinds on (and saves
+  // its model file) after the wizard closes
+  const tick = async () => {
+    if (isCancelled?.()) throw new PipelineCancelledError();
+    await yieldToUI();
+  };
 
   // Gap/pad are already in days (matching Python's gap_size=730, pad=180)
   const gapSizeMs = gapSize * MS_PER_DAY;
@@ -81,7 +91,7 @@ export async function runImputationPipeline(
   // ===== Step 1: Fetch GLDAS data (0-5%) =====
   onProgress('Fetching GLDAS data...', 0);
   onLog(`Fetching GLDAS soil moisture data for aquifer "${aquifer.name}"...`);
-  await yieldToUI();
+  await tick();
 
   let gldas: GldasFeatures;
   try {
@@ -98,7 +108,7 @@ export async function runImputationPipeline(
 
   // ===== Step 2: Prepare well data (5-10%) =====
   onProgress('Preparing well data...', 5);
-  await yieldToUI();
+  await tick();
 
   const wteMeasurements = measurements.filter(m => m.dataType === 'wte');
   const byWell = new Map<string, Measurement[]>();
@@ -158,7 +168,7 @@ export async function runImputationPipeline(
   // ===== PHASE A: PCHIP interpolation for ALL wells =====
   // Matches Python interp_well(wells_df, gap_size, pad, spacing)
   onProgress('PCHIP interpolation...', 12);
-  await yieldToUI();
+  await tick();
 
   const wellPchip = new Map<string, (number | null)[]>();
 
@@ -252,7 +262,7 @@ export async function runImputationPipeline(
   // Matches Python: norm_df = zscore_training_data(combined_df, combined_df)
   // Global per-column mean/std using sample std (ddof=1, pandas default)
   onProgress('Computing normalization statistics...', 15);
-  await yieldToUI();
+  await tick();
 
   // Feature z-score stats (global, from ALL valid rows)
   const gArrays = [gldasSoilw, gldasYr01, gldasYr03, gldasYr05, gldasYr10];
@@ -300,7 +310,7 @@ export async function runImputationPipeline(
   // Columns: 5 z-scored GLDAS + 1 min-max year + 12 one-hot month + 1 bias = 19
   // Matches Python: names = ['soilw', ..., 'soilw_yr10', 'year', 'month_1', ..., 'month_12'] + bias
   onProgress('Building feature matrix...', 18);
-  await yieldToUI();
+  await tick();
 
   // Year min-max normalization (matches Python: (year - min) / (max - min))
   const years = validRowIndices.map(i => new Date(monthlyDates[i]).getUTCFullYear());
@@ -338,6 +348,9 @@ export async function runImputationPipeline(
     const { well } = activeWells[wi];
     const pct = 20 + (wi / activeWells.length) * 70;
     onProgress(`ELM training well ${wi + 1}/${activeWells.length}...`, pct);
+    // Yield before each well's SVD solve (~0.5-2s each) so progress text
+    // can repaint and Cancel takes effect between wells
+    await tick();
 
     const targetStats = wellTargetStats.get(well.id);
     const pchipAtRows = wellPchipAtRows.get(well.id);
@@ -422,12 +435,11 @@ export async function runImputationPipeline(
       onLog(`Well ${well.name}: ELM training failed: ${msg}`);
     }
 
-    if (wi % 3 === 0) await yieldToUI();
   }
 
   // ===== Step 5: Save result (90-100%) =====
   onProgress('Saving model...', 90);
-  await yieldToUI();
+  await tick();
 
   const code = slugify(title);
   const aquiferSlug = slugify(aquifer.name);

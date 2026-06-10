@@ -10,6 +10,7 @@ import {
   ImputationModelMeta,
 } from '../types';
 import { runRasterAnalysis, RasterPipelineInput } from '../services/rasterAnalysis';
+import { isPipelineCancelled } from '../services/pipelineCancel';
 import { slugify } from '../utils/strings';
 import PchipPreviewCanvas from './PchipPreviewCanvas';
 
@@ -247,6 +248,7 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
   const step3Valid = title.trim().length > 0 && !hasConflict;
 
   const handleRun = async () => {
+    if (step === 'running') return; // a pipeline is already in flight
     cancelledRef.current = false;
     setStep('running');
     setErrorMessage(null);
@@ -297,13 +299,16 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
             setProgressText(stepText);
             setProgressPct(pct);
           }
-        }
+        },
+        () => cancelledRef.current
       );
       if (!cancelledRef.current) {
         setResult(result);
         setStep('complete');
       }
     } catch (err) {
+      // Cancellation throws to stop the compute — it isn't an error
+      if (isPipelineCancelled(err)) return;
       console.error('Raster analysis failed:', err);
       setErrorMessage(err instanceof Error ? err.message : String(err));
       setStep(3);
@@ -403,7 +408,10 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
                 })}
               </div>
             )}
-            <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+            <button
+              onClick={() => { cancelledRef.current = true; onClose(); }}
+              className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+            >
               <X size={20} className="text-slate-400" />
             </button>
           </div>

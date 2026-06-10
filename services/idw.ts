@@ -129,7 +129,10 @@ function fitQuadratic(
   return result ? [result[0], result[1], result[2], result[3], result[4]] : null;
 }
 
-export function idwGrid(
+// Async: the cell loop periodically awaits onChunk (UI repaint +
+// cancellation check) when provided, since large grids would otherwise
+// block the main thread for seconds.
+export async function idwGrid(
   wellLats: number[], wellLngs: number[], wellValues: number[],
   gridLats: number[], gridLngs: number[], mask: (0 | 1)[],
   options: {
@@ -137,8 +140,9 @@ export function idwGrid(
     nodalFunction?: IdwNodalFunction;
     neighborMode?: IdwNeighborMode;
     neighborCount?: number;
-  } = {}
-): (number | null)[] {
+  } = {},
+  onChunk?: () => Promise<void>
+): Promise<(number | null)[]> {
   const nWells = wellLats.length;
   if (nWells === 0) return gridLats.map(() => null);
   if (nWells === 1) return mask.map(m => m === 1 ? wellValues[0] : null);
@@ -229,11 +233,13 @@ export function idwGrid(
   const result: (number | null)[] = new Array(gridLats.length);
   let gridMin = Infinity, gridMax = -Infinity;
 
+  let processed = 0;
   for (let g = 0; g < gridLats.length; g++) {
     if (mask[g] === 0) {
       result[g] = null;
       continue;
     }
+    if (onChunk && ++processed % 5000 === 0) await onChunk();
 
     const { x: gx, y: gy } = projectSingle(gridLats[g], gridLngs[g], centLat, centLng);
 

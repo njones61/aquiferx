@@ -9,6 +9,7 @@ import { interpolatePCHIP, interpolateLinear, kernelSmooth, smoothModelCombined 
 import { krigGrid, estimateVariogramParams } from './kriging';
 import { idwGrid } from './idw';
 import { slugify } from '../utils/strings';
+import { PipelineCancelledError, isPipelineCancelled } from './pipelineCancel';
 
 export interface RasterPipelineInput {
   temporal: TemporalOptions;
@@ -50,15 +51,24 @@ export async function runRasterAnalysis(
   region: Region,
   wells: Well[],
   measurements: Measurement[],
-  onProgress: (step: string, pct: number) => void
+  onProgress: (step: string, pct: number) => void,
+  isCancelled?: () => boolean
 ): Promise<RasterAnalysisResult> {
   const { temporal, spatial, general, title } = input;
   const { startDate, endDate, interval } = temporal;
   const resolution = spatial.resolution;
 
+  // Yield point: lets the UI repaint AND aborts the pipeline when the
+  // user cancelled — without this the compute grinds on (and saves its
+  // result) after the dialog closes
+  const tick = async () => {
+    if (isCancelled?.()) throw new PipelineCancelledError();
+    await yieldToUI();
+  };
+
   // Step 1: Build grid
   onProgress('Building grid...', 0);
-  await yieldToUI();
+  await tick();
 
   const [minLat, minLng, maxLat, maxLng] = aquifer.bounds;
   const nx = resolution;
@@ -81,6 +91,9 @@ export async function runRasterAnalysis(
       gridLats.push(cellLat);
       mask.push(isPointInGeoJSON(cellLat, cellLng, aquifer.geojson) ? 1 : 0);
     }
+    // Point-in-polygon over a large grid can take seconds — keep the UI
+    // alive and cancellation responsive
+    if (row % 25 === 24) await tick();
   }
 
   // Step 2: Generate interval dates
@@ -102,7 +115,7 @@ export async function runRasterAnalysis(
   if (temporal.method === 'model' && temporal.modelFilePath) {
     // Model-based temporal interpolation: fetch model JSON, use combined column
     onProgress('Loading imputation model...', 5);
-    await yieldToUI();
+    await tick();
 
     const modelResp = await fetch(`/data/${temporal.modelFilePath}`);
     if (!modelResp.ok) throw new Error(`Failed to load model: ${temporal.modelFilePath}`);
@@ -125,7 +138,7 @@ export async function runRasterAnalysis(
       const { dates: modelDates, values: modelValues } = modelByWell.get(wellId)!;
 
       onProgress(`Model interpolation well ${wi + 1}/${modelWellIds.length}...`, 5 + (wi / modelWellIds.length) * 25);
-      if (wi % 5 === 0) await yieldToUI();
+      if (wi % 5 === 0) await tick();
 
       if (modelDates.length < 2) continue;
 
@@ -156,7 +169,7 @@ export async function runRasterAnalysis(
   } else if ((temporal.method === 'model-direct' || temporal.method === 'model-mavg') && temporal.modelFilePath) {
     // Model-based: direct lookup or smoothed moving average
     onProgress('Loading imputation model...', 5);
-    await yieldToUI();
+    await tick();
 
     const modelResp = await fetch(`/data/${temporal.modelFilePath}`);
     if (!modelResp.ok) throw new Error(`Failed to load model: ${temporal.modelFilePath}`);
@@ -177,7 +190,7 @@ export async function runRasterAnalysis(
       const rows = modelByWell.get(wellId)!;
 
       onProgress(`Model ${temporal.method === 'model-direct' ? 'direct' : 'MA'} well ${wi + 1}/${modelWellIds.length}...`, 5 + (wi / modelWellIds.length) * 25);
-      if (wi % 5 === 0) await yieldToUI();
+      if (wi % 5 === 0) await tick();
 
       // Build timestamp→value map (direct or smoothed)
       let tsMap: Map<number, number>;
@@ -215,7 +228,7 @@ export async function runRasterAnalysis(
       const meas = byWell.get(wellId)!;
 
       onProgress(`Interpolating well ${wi + 1}/${wellIds.length}...`, (wi / wellIds.length) * 30);
-      if (wi % 5 === 0) await yieldToUI();
+      if (wi % 5 === 0) await tick();
 
       const sorted = [...meas]
         .filter(m => !isNaN(new Date(m.date).getTime()))
@@ -309,7 +322,7 @@ export async function runRasterAnalysis(
   for (let ti = 0; ti < intervalDates.length; ti++) {
     const methodLabel = spatial.method === 'kriging' ? 'Kriging' : 'IDW';
     onProgress(`${methodLabel} timestep ${ti + 1}/${intervalDates.length}...`, 30 + (ti / intervalDates.length) * 50);
-    await yieldToUI();
+    await tick();
 
     // Collect wells that have a value at this timestep
     const activeLats: number[] = [];
@@ -331,14 +344,15 @@ export async function runRasterAnalysis(
     if (activeValues.length >= 2) {
       try {
         if (spatial.method === 'kriging') {
-          gridValues = krigGrid(
+          gridValues = await krigGrid(
             activeLats, activeLngs, activeValues,
             gridLats, gridLngs, mask,
             variogramParams,
-            spatial.kriging.variogramModel
+            spatial.kriging.variogramModel,
+            tick
           );
         } else {
-          gridValues = idwGrid(
+          gridValues = await idwGrid(
             activeLats, activeLngs, activeValues,
             gridLats, gridLngs, mask,
             {
@@ -346,10 +360,12 @@ export async function runRasterAnalysis(
               nodalFunction: spatial.idw.nodalFunction,
               neighborMode: spatial.idw.neighborMode,
               neighborCount: spatial.idw.neighborCount,
-            }
+            },
+            tick
           );
         }
       } catch (err) {
+        if (isPipelineCancelled(err)) throw err;
         throw new Error(`Spatial interpolation failed at timestep ${intervalDates[ti]}: ${err instanceof Error ? err.message : String(err)}`);
       }
     } else if (activeValues.length === 1) {
@@ -376,7 +392,7 @@ export async function runRasterAnalysis(
 
   // Step 6: Compute per-frame statistics from well-level values
   onProgress('Computing statistics...', 82);
-  await yieldToUI();
+  await tick();
 
   const stats: RasterFrameStats[] = [];
   for (let ti = 0; ti < intervalDates.length; ti++) {
@@ -415,7 +431,7 @@ export async function runRasterAnalysis(
   }
 
   onProgress('Saving results...', 85);
-  await yieldToUI();
+  await tick();
 
   // Step 7: Assemble result
   const code = slugify(title);
@@ -456,7 +472,9 @@ export async function runRasterAnalysis(
     stats,
   };
 
-  // Save to disk via API — per-aquifer subfolder with raster_ prefix
+  // Save to disk via API — per-aquifer subfolder with raster_ prefix.
+  // Final cancellation check so a cancelled run never writes its file.
+  await tick();
   const aquiferSlug = slugify(aquifer.name);
   await fetch('/api/save-data', {
     method: 'POST',
