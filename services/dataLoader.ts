@@ -276,12 +276,11 @@ export async function loadWells(regionPath: string, regionId: string): Promise<W
 
 // Load measurements from data_{code}.csv files for each data type
 export async function loadMeasurements(regionPath: string, regionId: string, dataTypes: { code: string; name: string; unit: string }[]): Promise<Measurement[]> {
-  const measurements: Measurement[] = [];
-
-  for (const dt of dataTypes) {
+  const perType = await Promise.all(dataTypes.map(async dt => {
+    const measurements: Measurement[] = [];
     try {
       const response = await freshFetch(`${regionPath}/data_${dt.code}.csv`);
-      if (!response.ok) continue;
+      if (!response.ok) return measurements;
 
       const text = await response.text();
       const { rows } = parseCSV(text);
@@ -310,9 +309,10 @@ export async function loadMeasurements(regionPath: string, regionId: string, dat
     } catch (e) {
       console.warn(`Error loading ${dt.code} measurements for ${regionId}:`, e);
     }
-  }
+    return measurements;
+  }));
 
-  return measurements;
+  return perType.flat();
 }
 
 // Load all data
@@ -335,79 +335,69 @@ export async function loadAllData(): Promise<{
     console.warn('Could not load parameter catalog:', e);
   }
 
-  const regions: Region[] = [];
-  const allAquifers: Aquifer[] = [];
-  const allWells: Well[] = [];
-  const allMeasurements: Measurement[] = [];
-  const allStorageMeta: RasterAnalysisMeta[] = [];
-  const allModelMeta: ImputationModelMeta[] = [];
-
-  for (const meta of regionMetas) {
+  // Load all regions concurrently; within a region the independent files
+  // also load concurrently (aquifers wait for wells, which they need for
+  // the geometry-less fallback). The old fully-sequential version cost
+  // dozens of serial round-trips before first paint.
+  const perRegion = await Promise.all(regionMetas.map(async meta => {
     const folderPath = `/data/${meta.id}`;
     const effectiveDataTypes = computeEffectiveDataTypes(meta, catalog);
 
-    // Load region boundary from region.geojson
-    try {
-      const response = await freshFetch(`${folderPath}/region.geojson`);
-      if (response.ok) {
-        const geojson = await response.json();
-        const bounds = calculateBounds(geojson);
-        regions.push({
-          id: meta.id,
-          name: meta.name,
-          lengthUnit: meta.lengthUnit || 'ft',
-          singleUnit: meta.singleUnit || false,
-          customDataTypes: meta.customDataTypes || [],
-          effectiveDataTypes,
-          geojson: geojson.type === 'FeatureCollection' ? geojson : { type: 'FeatureCollection', features: [geojson] },
-          bounds
-        });
-      }
-    } catch (e) {
-      console.warn(`Error loading region ${meta.name}:`, e);
-    }
+    const [region, wells, measurements, storageMeta, modelMeta] = await Promise.all([
+      (async (): Promise<Region | null> => {
+        try {
+          const response = await freshFetch(`${folderPath}/region.geojson`);
+          if (!response.ok) return null;
+          const geojson = await response.json();
+          const bounds = calculateBounds(geojson);
+          return {
+            id: meta.id,
+            name: meta.name,
+            lengthUnit: meta.lengthUnit || 'ft',
+            singleUnit: meta.singleUnit || false,
+            customDataTypes: meta.customDataTypes || [],
+            effectiveDataTypes,
+            geojson: geojson.type === 'FeatureCollection' ? geojson : { type: 'FeatureCollection', features: [geojson] },
+            bounds
+          };
+        } catch (e) {
+          console.warn(`Error loading region ${meta.name}:`, e);
+          return null;
+        }
+      })(),
+      loadWells(folderPath, meta.id),
+      loadMeasurements(folderPath, meta.id, effectiveDataTypes),
+      (async (): Promise<RasterAnalysisMeta[]> => {
+        try {
+          const res = await freshFetch(`/api/list-rasters?region=${encodeURIComponent(meta.id)}`);
+          if (res.ok) return await res.json();
+        } catch (e) {
+          console.warn(`Error loading storage metadata for ${meta.id}:`, e);
+        }
+        return [];
+      })(),
+      (async (): Promise<ImputationModelMeta[]> => {
+        try {
+          const res = await freshFetch(`/api/list-models?region=${encodeURIComponent(meta.id)}`);
+          if (res.ok) return await res.json();
+        } catch (e) {
+          console.warn(`Error loading model metadata for ${meta.id}:`, e);
+        }
+        return [];
+      })(),
+    ]);
 
-    // Load wells
-    const wells = await loadWells(folderPath, meta.id);
-    for (const w of wells) allWells.push(w);
-
-    // Load aquifers
     const aquifers = await loadAquifers(meta.id, folderPath, wells);
-    for (const a of aquifers) allAquifers.push(a);
 
-    // Load measurements from all effective data type CSVs
-    const measurements = await loadMeasurements(folderPath, meta.id, effectiveDataTypes);
-    for (const m of measurements) allMeasurements.push(m);
-
-    // Load storage analysis metadata
-    try {
-      const storageRes = await freshFetch(`/api/list-rasters?region=${encodeURIComponent(meta.id)}`);
-      if (storageRes.ok) {
-        const items: RasterAnalysisMeta[] = await storageRes.json();
-        for (const item of items) allStorageMeta.push(item);
-      }
-    } catch (e) {
-      console.warn(`Error loading storage metadata for ${meta.id}:`, e);
-    }
-
-    // Load imputation model metadata
-    try {
-      const modelRes = await freshFetch(`/api/list-models?region=${encodeURIComponent(meta.id)}`);
-      if (modelRes.ok) {
-        const items: ImputationModelMeta[] = await modelRes.json();
-        for (const item of items) allModelMeta.push(item);
-      }
-    } catch (e) {
-      console.warn(`Error loading model metadata for ${meta.id}:`, e);
-    }
-  }
+    return { region, wells, aquifers, measurements, storageMeta, modelMeta };
+  }));
 
   return {
-    regions,
-    aquifers: allAquifers,
-    wells: allWells,
-    measurements: allMeasurements,
-    storageMeta: allStorageMeta,
-    modelMeta: allModelMeta,
+    regions: perRegion.map(r => r.region).filter((r): r is Region => r !== null),
+    aquifers: perRegion.flatMap(r => r.aquifers),
+    wells: perRegion.flatMap(r => r.wells),
+    measurements: perRegion.flatMap(r => r.measurements),
+    storageMeta: perRegion.flatMap(r => r.storageMeta),
+    modelMeta: perRegion.flatMap(r => r.modelMeta),
   };
 }

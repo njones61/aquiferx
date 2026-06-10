@@ -277,7 +277,10 @@ export function autoMapColumns(columns: string[], fileType: string): ColumnMappi
     // "value" column) are handled by the detection panel.
     const wellIdIdx = lowerColumns.findIndex(c => c.includes('well') && c.includes('id') || c === 'well_id');
     const wellNameIdx = lowerColumns.findIndex(c => (c.includes('well') && c.includes('name')) || c === 'well_name' || c === 'name' || c === 'station' || c === 'station_name');
-    const dateIdx = lowerColumns.findIndex(c => c === 'date' || c.includes('date'));
+    // Exact match first, then word-boundary match — a bare .includes('date')
+    // auto-mapped columns like "updated" or "validated" as the date column
+    let dateIdx = lowerColumns.findIndex(c => c === 'date');
+    if (dateIdx < 0) dateIdx = lowerColumns.findIndex(c => /(^|[^a-z])date([^a-z]|$)/.test(c));
     const latIdx = lowerColumns.findIndex(c => c === 'lat' || c.includes('latitude') || c === 'lat_dec' || c === 'northing' || c === 'y');
     const longIdx = lowerColumns.findIndex(c => c === 'long' || c === 'lng' || c.includes('longitude') || c === 'long_dec' || c === 'lon' || c === 'easting' || c === 'x');
     const aqIdIdx = lowerColumns.findIndex(c => c.includes('aquifer') && c.includes('id') || c === 'aquifer_id');
@@ -312,15 +315,16 @@ export async function processUploadedFile(
     let fromCrs = 'WGS84';
     try {
       const zip = await JSZip.loadAsync(buffer);
-      let prjContent = '';
+      let prjPath = '';
       zip.forEach((path, entry) => {
-        if (path.endsWith('.prj') && !entry.dir) {
-          // We'll read the first .prj file found
-          prjContent = path;
+        // Use the first .prj found — without the guard, a zip containing
+        // multiple shapefiles would silently reproject with the last one
+        if (!prjPath && path.endsWith('.prj') && !entry.dir) {
+          prjPath = path;
         }
       });
-      if (prjContent) {
-        const prjFile = zip.file(prjContent);
+      if (prjPath) {
+        const prjFile = zip.file(prjPath);
         if (prjFile) {
           const wkt = await prjFile.async('text');
           const result = reprojectFromWKT(geojson, wkt);
@@ -427,19 +431,23 @@ export function assignWellToAquifer(
     const geom = feature.geometry;
     const aquiferId = String(feature.properties?.aquifer_id || '');
 
-    const polygons: number[][][] = [];
+    // Each polygon is [outerRing, ...holes] — a point inside a hole is
+    // NOT inside the polygon (testing only ring [0] mis-assigned wells
+    // sitting in donut holes)
+    const polygons: number[][][][] = [];
     if (geom.type === 'Polygon') {
-      polygons.push(geom.coordinates[0]);
+      polygons.push(geom.coordinates);
     } else if (geom.type === 'MultiPolygon') {
       for (const poly of geom.coordinates) {
-        polygons.push(poly[0]);
+        polygons.push(poly);
       }
     }
 
-    for (const ring of polygons) {
-      if (pointInPolygon([lng, lat], ring)) {
-        return aquiferId;
-      }
+    for (const rings of polygons) {
+      if (rings.length === 0) continue;
+      if (!pointInPolygon([lng, lat], rings[0])) continue;
+      const inHole = rings.slice(1).some(hole => pointInPolygon([lng, lat], hole));
+      if (!inHole) return aquiferId;
     }
   }
   return null;
