@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Shrinking ring animation for well search result */
 .well-search-pulse {
   position: absolute;
