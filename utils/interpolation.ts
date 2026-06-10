@@ -3,7 +3,7 @@
  */
 export function interpolateLinear(x: number[], y: number[], targetX: number[]): number[] {
   const n = x.length;
-  if (n < 2) return targetX.map(() => (n === 1 ? y[0] : 0));
+  if (n < 2) return targetX.map(() => (n === 1 ? y[0] : NaN)); // empty input has no value to extend — NaN, not a fabricated 0
 
   return targetX.map(tx => {
     if (tx <= x[0]) return y[0];
@@ -36,7 +36,7 @@ export function interpolateLinear(x: number[], y: number[], targetX: number[]): 
  */
 export function interpolatePCHIP(x: number[], y: number[], targetX: number[]): number[] {
   const n = x.length;
-  if (n < 2) return targetX.map(() => (n === 1 ? y[0] : 0));
+  if (n < 2) return targetX.map(() => (n === 1 ? y[0] : NaN)); // empty input has no value to extend — NaN, not a fabricated 0
 
   // For 2 points, just do linear
   if (n === 2) {

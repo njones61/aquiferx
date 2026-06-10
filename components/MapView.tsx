@@ -88,17 +88,40 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   onShowWellIdsChange,
   onDateFilterChange
 }, ref) => {
-  // Count measurements per well for the active data type (keyed by regionId:aquiferId:wellId)
-  const wellMeasurementCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+  // Per-well stats for the active data type (keyed by
+  // regionId:aquiferId:wellId), computed in ONE pass — counts, the default
+  // filter year, and the date filter all derive from this instead of each
+  // re-scanning the full measurements array (the date filter did so on
+  // every year keystroke)
+  const wellStats = useMemo(() => {
+    const stats = new Map<string, { count: number; minTs: number; maxTs: number }>();
     for (const m of measurements) {
-      if (m.dataType === selectedDataType) {
-        const key = `${m.regionId}:${m.aquiferId}:${m.wellId}`;
-        counts.set(key, (counts.get(key) || 0) + 1);
+      if (m.dataType !== selectedDataType) continue;
+      const key = `${m.regionId}:${m.aquiferId}:${m.wellId}`;
+      const ts = new Date(m.date).getTime();
+      const s = stats.get(key);
+      if (s) {
+        s.count++;
+        if (!isNaN(ts)) {
+          if (ts < s.minTs) s.minTs = ts;
+          if (ts > s.maxTs) s.maxTs = ts;
+        }
+      } else {
+        stats.set(key, {
+          count: 1,
+          minTs: isNaN(ts) ? Infinity : ts,
+          maxTs: isNaN(ts) ? -Infinity : ts,
+        });
       }
     }
-    return counts;
+    return stats;
   }, [measurements, selectedDataType]);
+
+  const wellMeasurementCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [key, s] of wellStats) counts.set(key, s.count);
+    return counts;
+  }, [wellStats]);
 
   const mapRef = useRef<L.Map | null>(null);
 
@@ -149,16 +172,14 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const filterDatesInitialized = useRef(false);
   const [labelFontSize, setLabelFontSize] = useState(9);
 
-  // Compute default date filter bounds from measurements
+  // Compute default date filter bounds from per-well stats
   const defaultFilterMinYear = useMemo(() => {
     let earliest = Infinity;
-    for (const m of measurements) {
-      if (m.dataType !== selectedDataType) continue;
-      const y = new Date(m.date).getFullYear();
-      if (y < earliest) earliest = y;
+    for (const [, s] of wellStats) {
+      if (s.minTs < earliest) earliest = s.minTs;
     }
-    return earliest === Infinity ? new Date().getFullYear() : earliest;
-  }, [measurements, selectedDataType]);
+    return isFinite(earliest) ? new Date(earliest).getFullYear() : new Date().getFullYear();
+  }, [wellStats]);
 
   // Update applied values only when input is a valid 4-digit year
   useEffect(() => {
@@ -199,28 +220,13 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     if (!filterDatesEnabled || (appliedMinYear == null && appliedMaxYear == null)) return null;
     const filterMin = appliedMinYear != null ? new Date(appliedMinYear, 0, 1).getTime() : -Infinity;
     const filterMax = appliedMaxYear != null ? new Date(appliedMaxYear, 11, 31, 23, 59, 59, 999).getTime() : Infinity;
-    // Compute each well's earliest and latest measurement dates
-    const wellMin = new Map<string, number>();
-    const wellMax = new Map<string, number>();
-    for (const m of measurements) {
-      if (m.dataType !== selectedDataType) continue;
-      const key = `${m.regionId}:${m.aquiferId}:${m.wellId}`;
-      const ts = new Date(m.date).getTime();
-      const curMin = wellMin.get(key);
-      if (curMin === undefined || ts < curMin) wellMin.set(key, ts);
-      const curMax = wellMax.get(key);
-      if (curMax === undefined || ts > curMax) wellMax.set(key, ts);
-    }
     // A well passes if its [earliest, latest] range overlaps [filterMin, filterMax]
     const passing = new Set<string>();
-    for (const [key, earliest] of wellMin) {
-      const latest = wellMax.get(key)!;
-      if (earliest <= filterMax && latest >= filterMin) {
-        passing.add(key);
-      }
+    for (const [key, s] of wellStats) {
+      if (s.minTs <= filterMax && s.maxTs >= filterMin) passing.add(key);
     }
     return passing;
-  }, [measurements, selectedDataType, filterDatesEnabled, appliedMinYear, appliedMaxYear]);
+  }, [wellStats, filterDatesEnabled, appliedMinYear, appliedMaxYear]);
 
   // Notify parent of date filter changes
   useEffect(() => {

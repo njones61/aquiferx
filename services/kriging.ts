@@ -62,12 +62,26 @@ function buildKrigingMatrix(
 }
 
 // LU decomposition with partial pivoting — O(n³) done once
-// Returns { LU, perm } where LU stores L (below diagonal) and U (on/above diagonal)
-function luDecompose(A: number[][]): { LU: Float64Array[]; perm: Int32Array } {
+// Returns { LU, perm, pivotTol } where LU stores L (below diagonal) and U
+// (on/above diagonal). The singular-pivot tolerance is scaled to the
+// matrix magnitude — an absolute 1e-12 misjudged systems whose covariance
+// entries (sill-scaled) are very large or very small.
+function luDecompose(A: number[][]): { LU: Float64Array[]; perm: Int32Array; pivotTol: number } {
   const n = A.length;
   const LU: Float64Array[] = Array.from({ length: n }, (_, i) => Float64Array.from(A[i]));
   const perm = new Int32Array(n);
   for (let i = 0; i < n; i++) perm[i] = i;
+
+  // Max-abs norm of the input for relative tolerance
+  let norm = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const v = Math.abs(LU[i][j]);
+      if (v > norm) norm = v;
+    }
+  }
+  const pivotTol = Math.max(norm, 1) * n * Number.EPSILON;
+  let skippedPivots = 0;
 
   for (let col = 0; col < n; col++) {
     // Partial pivoting
@@ -83,7 +97,7 @@ function luDecompose(A: number[][]): { LU: Float64Array[]; perm: Int32Array } {
     }
 
     const pivot = LU[col][col];
-    if (Math.abs(pivot) < 1e-12) continue;
+    if (Math.abs(pivot) < pivotTol) { skippedPivots++; continue; }
 
     for (let row = col + 1; row < n; row++) {
       const factor = LU[row][col] / pivot;
@@ -94,11 +108,15 @@ function luDecompose(A: number[][]): { LU: Float64Array[]; perm: Int32Array } {
     }
   }
 
-  return { LU, perm };
+  if (skippedPivots > 0) {
+    console.warn(`[Kriging] ${skippedPivots} near-singular pivot(s) skipped — wells may be too close together or the variogram ill-conditioned; results may be unreliable`);
+  }
+
+  return { LU, perm, pivotTol };
 }
 
 // Solve using pre-computed LU factorization — O(n²) per right-hand side
-function luSolve(LU: Float64Array[], perm: Int32Array, b: number[]): number[] {
+function luSolve(LU: Float64Array[], perm: Int32Array, b: number[], pivotTol: number): number[] {
   const n = LU.length;
 
   // Apply permutation: y = P * b
@@ -120,7 +138,7 @@ function luSolve(LU: Float64Array[], perm: Int32Array, b: number[]): number[] {
     const row = LU[i];
     for (let j = i + 1; j < n; j++) sum -= row[j] * x[j];
     const diag = row[i];
-    x[i] = Math.abs(diag) < 1e-12 ? 0 : sum / diag;
+    x[i] = Math.abs(diag) < pivotTol ? 0 : sum / diag;
   }
 
   return x;
@@ -207,7 +225,11 @@ export function estimateVariogramParams(
 
   // Nugget
   const nuggetEnabled = options?.nuggetEnabled ?? true;
-  const nugget = nuggetEnabled ? variance * 0.05 : 0.001;
+  // Even with nugget "disabled", keep a floor proportional to the sill —
+  // a fixed 0.001 with a Gaussian variogram and closely spaced wells is
+  // notoriously ill-conditioned (singular kriging matrices, garbage
+  // weights)
+  const nugget = nuggetEnabled ? variance * 0.05 : Math.max(0.001, variance * 1e-4);
 
   console.log(`[Kriging] Variogram: sill=${variance.toFixed(2)}, range=${range.toFixed(0)}m, nugget=${nugget.toFixed(4)}, mean=${mean.toFixed(2)}, n=${n}`);
 
@@ -261,7 +283,7 @@ export async function krigGrid(
 
   // Build the kriging matrix and LU-decompose once (O(n³))
   const K = buildKrigingMatrix(wellDists, sill, range, nugget, model);
-  const { LU, perm } = luDecompose(K);
+  const { LU, perm, pivotTol } = luDecompose(K);
 
   // For each grid cell, solve for weights via O(n²) LU back-substitution
   const result: (number | null)[] = new Array(gridLats.length);
@@ -288,7 +310,7 @@ export async function krigGrid(
     rhs[n] = 1;
 
     // Solve using pre-computed LU factorization
-    const weights = luSolve(LU, perm, rhs);
+    const weights = luSolve(LU, perm, rhs, pivotTol);
 
     // Interpolated value = weighted sum of well values
     let val = 0;

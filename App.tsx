@@ -776,11 +776,29 @@ const App: React.FC = () => {
     new Set(selectedWells.map(w => `${w.regionId}:${w.aquiferId}:${w.id}`)),
   [selectedWells]);
 
-  const selectedWellMeasurements = useMemo(() =>
-    selectedWellKeys.size > 0
-      ? measurements.filter(m => m.dataType === selectedDataType && selectedWellKeys.has(`${m.regionId}:${m.aquiferId}:${m.wellId}`))
-      : [],
-  [selectedWellKeys, measurements, selectedDataType]);
+  // Global measurement index: wellKey -> dataType -> measurements. Built
+  // once per dataset so per-selection lookups don't re-filter the whole
+  // flat array on every well click.
+  const measurementIndex = useMemo(() => {
+    const byWell = new Map<string, Map<string, Measurement[]>>();
+    for (const m of measurements) {
+      const key = `${m.regionId}:${m.aquiferId}:${m.wellId}`;
+      let types = byWell.get(key);
+      if (!types) { types = new Map(); byWell.set(key, types); }
+      const list = types.get(m.dataType);
+      if (list) list.push(m); else types.set(m.dataType, [m]);
+    }
+    return byWell;
+  }, [measurements]);
+
+  const selectedWellMeasurements = useMemo(() => {
+    const out: Measurement[] = [];
+    for (const w of selectedWells) {
+      const list = measurementIndex.get(`${w.regionId}:${w.aquiferId}:${w.id}`)?.get(selectedDataType);
+      if (list) for (const m of list) out.push(m);
+    }
+    return out;
+  }, [selectedWells, measurementIndex, selectedDataType]);
 
   // Precompute eligible well time ranges once (stable across frames)
   const wellTimeRanges = useMemo<Map<string, [number, number]> | null>(() => {

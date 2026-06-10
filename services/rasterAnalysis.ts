@@ -23,22 +23,22 @@ export interface RasterPipelineInput {
   title: string;
 }
 
-// Generate interval dates between start and end (inclusive) as ISO strings
+// Generate interval dates between start and end (inclusive) as ISO strings.
+// UTC arithmetic throughout — mixing a UTC-parsed start with local-time
+// setMonth drifted interval dates by a day across DST/month-end boundaries.
 function generateIntervalDates(startDate: string, endDate: string, interval: '3months' | '6months' | '1year'): string[] {
-  const dates: string[] = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new Error(`Invalid date range: "${startDate}" – "${endDate}"`);
+  }
+  const stepMonths = interval === '1year' ? 12 : interval === '6months' ? 6 : 3;
 
-  let current = new Date(start);
+  const dates: string[] = [];
+  const current = new Date(start);
   while (current <= end) {
     dates.push(current.toISOString().slice(0, 10));
-    if (interval === '1year') {
-      current.setFullYear(current.getFullYear() + 1);
-    } else if (interval === '6months') {
-      current.setMonth(current.getMonth() + 6);
-    } else {
-      current.setMonth(current.getMonth() + 3);
-    }
+    current.setUTCMonth(current.getUTCMonth() + stepMonths);
   }
   return dates;
 }
@@ -111,6 +111,7 @@ export async function runRasterAnalysis(
 
   // For each well, interpolate to interval dates
   const wellInterp = new Map<string, { well: Well; values: (number | null)[] }>();
+  const wellById = new Map(wells.map(w => [w.id, w]));
 
   if (temporal.method === 'model' && temporal.modelFilePath) {
     // Model-based temporal interpolation: fetch model JSON, use combined column
@@ -134,7 +135,7 @@ export async function runRasterAnalysis(
 
     for (let wi = 0; wi < modelWellIds.length; wi++) {
       const wellId = modelWellIds[wi];
-      const well = wells.find(w => w.id === wellId)!;
+      const well = wellById.get(wellId)!;
       const { dates: modelDates, values: modelValues } = modelByWell.get(wellId)!;
 
       onProgress(`Model interpolation well ${wi + 1}/${modelWellIds.length}...`, 5 + (wi / modelWellIds.length) * 25);
@@ -186,7 +187,7 @@ export async function runRasterAnalysis(
 
     for (let wi = 0; wi < modelWellIds.length; wi++) {
       const wellId = modelWellIds[wi];
-      const well = wells.find(w => w.id === wellId)!;
+      const well = wellById.get(wellId)!;
       const rows = modelByWell.get(wellId)!;
 
       onProgress(`Model ${temporal.method === 'model-direct' ? 'direct' : 'MA'} well ${wi + 1}/${modelWellIds.length}...`, 5 + (wi / modelWellIds.length) * 25);
@@ -224,7 +225,7 @@ export async function runRasterAnalysis(
 
     for (let wi = 0; wi < wellIds.length; wi++) {
       const wellId = wellIds[wi];
-      const well = wells.find(w => w.id === wellId)!;
+      const well = wellById.get(wellId)!;
       const meas = byWell.get(wellId)!;
 
       onProgress(`Interpolating well ${wi + 1}/${wellIds.length}...`, (wi / wellIds.length) * 30);

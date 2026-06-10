@@ -1499,7 +1499,10 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       const wname = wellNameCol ? (r[wellNameCol] || '').trim() : '';
       const identity = wid || wname || '';
       if (!identity) continue;
-      const date = r[dateCol] || '';
+      // Parse the date the same way doSave's dedup does — keying on the
+      // raw string makes the preview count disagree with what actually
+      // collapses at save time (e.g. "1/5/2024" vs "01/05/2024")
+      const date = r[dateCol] ? parseDate(r[dateCol], dateFormat) : '';
       if (!date) continue;
       const key = `${identity}|${date}`;
       counts.set(key, (counts.get(key) || 0) + 1);
@@ -1514,7 +1517,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
     }
     if (duplicateGroups === 0) return null;
     return { duplicateGroups, extraRows };
-  }, [file, dataSource]);
+  }, [file, dataSource, dateFormat]);
   const hasMatchResults = !!matchResults && matchResults.length > 0;
   const isBootstrap = existingWellCount === 0;
 

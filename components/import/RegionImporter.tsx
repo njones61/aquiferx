@@ -159,13 +159,22 @@ const RegionImporter: React.FC<RegionImporterProps> = ({ existingRegionIds, onCo
       const meta = importValidation.meta;
       const folderId = meta.id;
 
-      // Find prefix in zip
+      // Find prefix in zip. Keep the first region.json — overwriting on
+      // every match meant a zip containing multiple regions imported a mix
+      // of files validated against whichever region.json came last.
       let prefix = '';
+      let regionJsonCount = 0;
       zip.forEach((relativePath) => {
         if (relativePath.endsWith('region.json')) {
-          prefix = relativePath.replace('region.json', '');
+          regionJsonCount++;
+          if (regionJsonCount === 1) prefix = relativePath.replace('region.json', '');
         }
       });
+      if (regionJsonCount > 1) {
+        setError('This zip contains multiple regions. Import a single-region zip here, or use Import Database in Manage Data for multi-region archives.');
+        setIsSaving(false);
+        return;
+      }
 
       const files: { path: string; content: string }[] = [];
       const entries: [string, JSZip.JSZipObject][] = [];
