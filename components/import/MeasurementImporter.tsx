@@ -544,14 +544,19 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       // Build mapping from API-format siteId → wells.csv well_id
       const apiToWellId: Record<string, string> = {};
       for (const id of wellIds) {
-        if (id.startsWith('USGS-')) {
+        // Monitoring-location IDs are "{AGENCY}-{site number}". The USGS
+        // API hosts cooperating agencies' wells too (e.g. AZ014-… from the
+        // Arizona DWR network) and serves their field measurements from
+        // the same collection — matching only "USGS-" silently skipped
+        // them. App-generated ids (lowercase "aqx-…") don't match.
+        if (/^[A-Z][A-Z0-9]{1,9}-\d{8,15}$/.test(id)) {
           apiToWellId[id] = id;
         } else if (/^\d{8,15}$/.test(id)) {
           apiToWellId[`USGS-${id}`] = id;
         }
       }
       const usgsSiteIds = Object.keys(apiToWellId);
-      if (usgsSiteIds.length === 0) throw new Error('No USGS site IDs found. Wells must have "USGS-" prefix or be 8-15 digit numeric IDs.');
+      if (usgsSiteIds.length === 0) throw new Error('No USGS site IDs found. Wells must have an "{AGENCY}-" prefix (e.g. USGS-) or be 8-15 digit numeric IDs.');
 
       setUsgsProgress({ completed: 0, total: usgsSiteIds.length, done: false });
 
