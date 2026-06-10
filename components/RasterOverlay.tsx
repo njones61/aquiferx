@@ -418,10 +418,17 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
     });
   }, [frameIdx, renderFrame]);
 
-  // Unmount: cancel any scheduled render and invalidate in-flight encodes
+  // Unmount: cancel any scheduled render and invalidate in-flight encodes.
+  // rafIdRef MUST be reset to null here — the render effect treats a
+  // non-null id as "already scheduled", so a cancelled-but-not-cleared id
+  // (e.g. from StrictMode's simulated unmount) would block every future
+  // render and leave the overlay permanently blank.
   useEffect(() => {
     return () => {
-      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
       renderGenRef.current++;
       if (overlayUrlRef.current) {
         URL.revokeObjectURL(overlayUrlRef.current);
