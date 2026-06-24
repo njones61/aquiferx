@@ -56,7 +56,7 @@ The GLDAS (Global Land Data Assimilation System) soil moisture data is a critica
 
 ### Data Source
 
-The current Python notebook uses a THREDDS/WMS endpoint at `https://apps.geoglows.org/thredds/wms/geoglows_data/soilw.mon.mean.v2.nc`. This endpoint may change in the future, so the API URL should be configurable.
+The current Python notebook uses a THREDDS/WMS endpoint at `https://legacy-apps.geoglows.org/thredds/wms/geoglows_data/soilw.mon.mean.v2.nc`. This endpoint may change in the future, so the API URL should be configurable.
 
 An alternative option is to fetch GLDAS data directly from NASA's GES DISC (Goddard Earth Sciences Data and Information Services Center). NASA provides OPeNDAP and REST-based access to GLDAS-2.1 monthly data. This would require an Earthdata login token. For now, we will use the GeoGLOWS THREDDS endpoint, but the architecture should allow swapping the data source later.
 

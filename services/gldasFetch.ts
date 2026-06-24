@@ -1,6 +1,6 @@
 import { interpolatePCHIP } from '../utils/interpolation';
 
-const GLDAS_WMS_URL = 'https://apps.geoglows.org/thredds/wms/geoglows_data/soilw.mon.mean.v2.nc';
+const GLDAS_WMS_URL = 'https://legacy-apps.geoglows.org/thredds/wms/geoglows_data/soilw.mon.mean.v2.nc';
 
 export interface GldasFeatures {
   dates: string[];    // ISO date strings, monthly

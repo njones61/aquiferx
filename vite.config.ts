@@ -387,7 +387,7 @@ function saveDataPlugin(): Plugin {
           // Whitelist the GLDAS THREDDS host — an open proxy would let
           // anyone who can reach this dev server fetch arbitrary URLs
           // through it
-          if (!targetUrl || !targetUrl.startsWith('https://apps.geoglows.org/')) {
+          if (!targetUrl || !targetUrl.startsWith('https://legacy-apps.geoglows.org/')) {
             res.statusCode = 400;
             res.end('Missing or non-GLDAS url parameter');
             return;
