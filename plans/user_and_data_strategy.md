@@ -1,5 +1,10 @@
 # Aquifer Analyst — User & Data Management Strategy
 
+> **⚠️ Partially superseded — the cloud data plane has changed. See [`plan_data_mgmt.md`](./plan_data_mgmt.md).**
+> This document's core cloud-storage model — **storing all data (measurements, wells, boundaries) as rows in a Supabase Postgres database that we host** — has been **superseded**. We do not want to host and maintain everyone's groundwater data. The current decision keeps the file format and splits storage into a small **metadata plane** we host (accounts, orgs, roles, credentials, dataset pointers) and a **data plane** the user/org hosts (Bring Your Own Storage; S3-compatible first, HydroShare on-ramp), with autosync and per-file conflict checks.
+>
+> **Still valid from this document:** the `DataProvider` abstraction layer (§7), the IndexedDB **local-only mode** (Phase 2), the **sample-region** approach (§9), Supabase for **auth + the metadata plane**, and Vercel serverless hosting. Treat §5–6 (full relational schema + RLS for bulk data) and the "everything in Postgres" framing as historical; read `plan_data_mgmt.md` for the authoritative storage strategy.
+
 ## Executive Summary
 
 The Aquifer Analyst currently runs as a local-only prototype with no user accounts and no remote data storage. This document defines the strategy to evolve it into a cloud-backed application with simple user accounts while preserving a fully offline mode for users who cannot or prefer not to store data remotely.
