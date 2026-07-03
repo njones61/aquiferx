@@ -18,14 +18,12 @@ Today, data are stored as a hierarchy of CSV and JSON files under `public/data/`
 
 We split storage into two planes with opposite economics. This reconciles this plan with `user_and_data_strategy.md`: we still use a database, but only for the small metadata plane.
 
-- **Metadata plane — we host (tiny).** A small database (Supabase) holds user accounts, organization membership, roles (admin / viewer), public-vs-private flags, encrypted storage credentials, and a *pointer* to where each dataset lives. Kilobytes per user; effectively free to host indefinitely.
+- **Metadata plane — we host (tiny).** A small database (Supabase) holds user accounts, the store(s) each user has connected, public-vs-private flags, encrypted storage credentials, and a *pointer* to where each dataset lives. No organization or membership records — grouping is implicit (§1). Kilobytes per user; effectively free to host indefinitely.
 - **Data plane — the user/org hosts (potentially huge).** The actual regions, aquifers, wells, and measurements, kept in our file format, stored in storage the user or organization owns.
 
-**Authentication.** Login to the metadata plane uses **Supabase Auth** (email/password and OAuth providers to start; org-level SSO is a later add). An organization is a first-class record; users are provisioned into it with a role (admin can edit and manage members, viewer is read-only). Org membership — not per-file ACLs — is what grants access to a shared BYOS store: every member of an org resolves to the same storage pointer and credentials (§3.2). How a first admin creates an org and invites members is an onboarding flow to be specified alongside the startup screen (§3).
+**Accounts.** User accounts and login are handled separately and already settled; this plan does not restate them. What matters here is only that accounts are simple, with **no per-user roles and no formal "organization" entity.** A user connects a remote store by entering its credentials, which we store encrypted (§2) and use on that user's behalf.
 
-**Multi-user access is granted by org membership, not by sharing credentials.** An admin connects the org's storage *once*; the credentials are then encrypted server-side and reused on each member's behalf — members read and write the shared data without ever seeing a key. Users should **not** pass raw storage credentials around: doing so bypasses the app's viewer/admin roles and the §6 conflict checks, cannot be revoked per-person without rotating the key for everyone, and leaks the secret. Adding or removing a person is a membership change, not a credential change.
-
-**Credential encryption & key management.** Storage credentials are encrypted at rest in the metadata DB and only ever decrypted inside the serverless backend (§2), never sent to the browser. The master/data-encryption key lives in the serverless platform's secret store (e.g. Vercel/host env), rotated independently of user records; the DB never holds plaintext secrets or the master key.
+**Organizations are implicit — the store *is* the group.** Everyone who connects to the same remote store is, by definition, working on the same shared data. There is no membership list, no invite flow, and no roles to manage. **How an organization obtains its storage credentials and shares them among its people is entirely the organization's business — we neither mediate nor police it.** Two colleagues collaborate simply by both connecting to the same store. This removes an entire layer of onboarding at the cost of coarse revocation: because access follows from possession of the connection, removing someone is the org's own act (e.g. rotating the credential at their provider), not a button in our app. Read-only access still arises naturally when a user views a *public* dataset (§7) they haven't connected to and so cannot write.
 
 ### 2. Production backend: thin serverless functions
 
@@ -44,7 +42,7 @@ This is the only clean way to keep third-party cloud secrets off the client and 
 When a user first launches the app under their account, a startup screen offers three modes. The chosen mode determines save behavior.
 
 1. **Sample database** — a small, read-only dataset we provide so new users see the app working immediately. Nothing to sync.
-2. **Remote storage (Bring Your Own Storage)** — connect the organization's own remote store. This is the primary answer to the storage-liability problem and solves organization sharing for free: every admin/viewer in the org points at the same store. Save behavior is **autosync** (§5).
+2. **Remote storage (Bring Your Own Storage)** — connect the organization's own remote store. This is the primary answer to the storage-liability problem and solves organization sharing for free: everyone who connects to the same store shares its data (implicit orgs, §1). Save behavior is **autosync** (§5).
 3. **Local-only — no server storage at all.** The working copy lives on the user's own machine and never touches our infrastructure. Originally conceived as the "state-secret" case, this is in practice expected to be **the most common mode** for much of the worldwide audience — organizations that have no cloud account, work on intermittent connections, or simply want their groundwater data to stay on their own computers. It therefore gets first-class design treatment (§3a) rather than being a fallback.
 
 #### 3a. Local mode design (the primary path for many users)
@@ -108,19 +106,19 @@ Design details:
 
 ### 6. Concurrency & conflicts
 
-Organizations may have multiple admins editing at once. We reuse the optimistic-locking approach already in `save-data`:
+Multiple people may edit the same store at once (implicit orgs, §1). We reuse the optimistic-locking approach already in `save-data`:
 
-- **Per-file conditional writes** (ETag `If-Match` / S3 conditional writes). On mismatch: "this region was changed by someone else — reload / overwrite / merge." Per-file granularity keeps conflicts rare and small — another reason we sync per file rather than as one monolithic zip (which would silently clobber).
-- A per-dataset version number in the metadata DB plus a "someone else saved since you loaded — reload?" prompt covers the multi-admin case. Real-time collaborative editing is out of scope.
+- **Per-file conditional writes** (ETag `If-Match` / S3 conditional writes). On mismatch: "this region was changed by someone else — reload or overwrite." (Automatic merging of two edited CSVs/GeoJSONs is out of scope — the choice is reload theirs or overwrite with yours.) Per-file granularity keeps conflicts rare and small — another reason we sync per file rather than as one monolithic zip (which would silently clobber).
+- A per-dataset version number in the metadata DB plus a "someone else saved since you loaded — reload?" prompt covers the multi-user case. Real-time collaborative editing is out of scope.
 
 ### 7. Public vs. private sharing
 
 **All access to the app requires a user account** — there is no anonymous entry. So public vs. private is a *scope-of-audience* flag within our authenticated user base, not an open-internet toggle:
 
-- **Private** (default) — visible only to members of the org that owns the dataset.
-- **Public** — visible to *any* authenticated Aquifer Analyst user, regardless of org. A shared, cross-org library, still gated behind login.
+- **Private** (default) — visible only to users who have connected to the store it lives in (implicit orgs, §1).
+- **Public** — visible to *any* authenticated Aquifer Analyst user, whether or not they've connected to that store. A shared library, still gated behind login.
 
-Because there is no anonymous read, **every read is authenticated** — there are no publicly-readable object URLs. The metadata DB flags each dataset public or private, and the backend decides whether to sign a read URL for the requesting user: for private data, only if the user is in the owning org; for public data, for any logged-in user. Public vs. private simply changes *which set of authenticated users* the backend will sign for. (This supersedes the "public URL prefix / URL-variable" idea in `user_and_data_strategy.md`, which assumed anonymous links.)
+Because everyone is logged in, **every file is locked and served through a short-lived access pass** that the backend hands out only after checking who's asking — no file is ever openly fetchable. The public/private flag simply decides *who* the backend will hand a pass to: for a private dataset, only users who have connected to that store; for a public one, any logged-in user. (This replaces the open "public URL" idea in `user_and_data_strategy.md`, which assumed links anyone could use without logging in.)
 
 ### 8. Session resume
 
@@ -188,11 +186,11 @@ Two ways to wire prod reads: (a) a Vercel rewrite (`/data/:path* → /api/...`) 
 
 ### Migration / seeding
 
-A one-time recursive upload script walks `public/data/` and `put`s each file at the same relative key — the seed path for moving the existing nine sample regions into a store, and the template for "export local → push to remote."
+A one-time recursive upload script walks `public/data/` and `put`s each file at the same relative key — the seed path for moving the existing sample regions into a store, and the template for "export local → push to remote."
 
 ### Access control
 
-Since all app access requires a login (§7), **every read is authenticated — we never use anonymous/public object URLs.** All datasets, public and private alike, are stored with `access: private` at the object-store level and served through short-lived signed URLs minted by the backend. The public/private flag in §7 does not change the storage ACL; it changes *who the backend will sign a URL for*: a private dataset is signed only for members of the owning org, a public dataset for any authenticated user. This keeps a single, uniform enforcement path (authenticate → check flag → sign) rather than mixing public CDN prefixes with signed URLs.
+Since all app access requires a login (§7), **every file is locked at the storage level and served only through a short-lived access pass** — we never expose an openly-fetchable URL. Concretely: all datasets, public and private alike, are stored with `access: private` at the object-store level and served through short-lived signed URLs minted by the backend. The public/private flag in §7 does not change the storage ACL; it only changes *who the backend will mint a pass for*: a private dataset only for users who have connected to that store, a public dataset for any authenticated user. This keeps one uniform path (log in → check flag → mint pass) rather than mixing openly-served public URLs with locked ones.
 
 ---
 
