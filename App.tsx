@@ -1199,7 +1199,7 @@ const App: React.FC = () => {
                 <button
                   onClick={analyzeTrends}
                   className={`rfs-btn icon ${showTrends ? 'active' : ''}`}
-                  title="Analyze Trends"
+                  data-tip="Analyze Trends"
                   aria-label="Analyze Trends"
                   aria-pressed={showTrends}
                 >
@@ -1227,7 +1227,7 @@ const App: React.FC = () => {
               <button
                 onClick={() => setRasterDialogOpen(true)}
                 className="rfs-btn icon"
-                title="Spatial Analysis"
+                data-tip="Spatial Analysis"
                 aria-label="Spatial Analysis"
               >
                 <BarChart3 size={20} className="text-[#34d399]" />
@@ -1237,7 +1237,7 @@ const App: React.FC = () => {
               <button
                 onClick={handleOpenImputationWizard}
                 className="rfs-btn icon"
-                title="Impute Gaps"
+                data-tip="Impute Gaps"
                 aria-label="Impute Gaps"
               >
                 <Wand2 size={20} className="text-[#fbbf24]" />
@@ -1246,7 +1246,7 @@ const App: React.FC = () => {
             <button
               onClick={() => setIsDataManagerOpen(true)}
               className="rfs-btn icon"
-              title="Manage Data"
+              data-tip="Manage Data"
               aria-label="Manage Data"
             >
               <Database size={20} className="text-[#60a5fa]" />

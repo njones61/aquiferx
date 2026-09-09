@@ -979,7 +979,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           <button
             onClick={() => setIsBasemapMenuOpen(o => !o)}
             className="rfs-btn map"
-            title="Basemap"
+            data-tip="Basemap"
             aria-label="Basemap"
             aria-haspopup="true"
             aria-expanded={isBasemapMenuOpen}
