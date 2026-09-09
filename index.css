@@ -56,7 +56,11 @@
   src: url("/fonts/opensans.woff2") format("woff2");
 }
 
-.rfs-panel {
+/* On :root rather than on .rfs-panel: the map's own chrome — the basemap picker
+   at its corner — is styled to match and sits outside the panel entirely. Only
+   the .rfs-* rules below read any of these, so nothing else inherits a look
+   from them. */
+:root {
   --bg: #0a0e17;
   --surface: #111827;
   --surface2: #1e293b;
@@ -81,7 +85,9 @@
   --r-md: 6px;
   --r-lg: 8px;
   --size: 36px;
+}
 
+.rfs-panel {
   font-family: "Open Sans", "Segoe UI", system-ui, sans-serif;
   background: var(--surface);
   color: var(--text);
@@ -294,9 +300,17 @@
   text-align: left;
   color: var(--text-dim);
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
   cursor: pointer;
+}
+
+/* The chosen one. The border is already reserved above, so lighting it up
+   doesn't move the row. */
+.rfs-opt.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
 }
 
 .rfs-opt:hover {
@@ -327,4 +341,44 @@
 .rfs-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+/* ── Map overlay chrome ───────────────────────────────────────────────────
+   The basemap picker, matching the one at the corner of the RFS map: a 44px
+   square button carrying a surface and a shadow the panel's buttons don't need,
+   because it floats over tiles rather than sitting on a panel. */
+.rfs-btn.map {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.rfs-btn.map svg {
+  width: 26px;
+  height: 26px;
+  fill: currentColor;
+}
+
+/* Opens to the left of its button: these controls sit at the right edge of the
+   map, so a menu dropping down and right would hang off the viewport. */
+.rfs-menu-map {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
+  min-width: 195px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* RFS runs its menu rows at 14px. The sidebar's kebab menus are tighter than
+   that to suit a dense tree; this one is not in a tree. */
+.rfs-menu-map .rfs-opt {
+  font-size: 14px;
+  padding: 8px 10px;
+  white-space: nowrap;
 }

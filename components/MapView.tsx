@@ -1,10 +1,18 @@
 
 import React, { useEffect, useRef, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import L from 'leaflet';
-import { Layers, ChevronRight, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Region, Aquifer, Well, Measurement } from '../types';
 import { isPointInGeoJSON } from '../utils/geo';
 import { useRasterFrame } from '../contexts/RasterFrameContext';
+
+// Esri's Calcite "basemap" glyph, the same one the RFS map button carries.
+// Inlined rather than pulling in @esri/calcite-ui-icons for a single path.
+const BasemapIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M23 13H13v10h10zm-9 9v-5h5v2h-2v1h2v2zm8 0h-2v-5h2zm0-6h-8v-2h8zM11 1H1v10h10zm-.519 7.085-.1-.008c-.133-.01-.252-.039-.381-.056V10H5.956c.019.067.043.13.058.2H4.981c-.023-.071-.062-.131-.089-.2H2V7.266l-.108-.046-.093-.035-.166-1.129.367.138V2h2.053a7 7 0 0 1-.094-.422l-.016-.1.989-.155.015.1c.007.04.042.254.126.577H10v5.014c.152.024.299.054.46.067l.1.008zm-.021-1.004.1.008-.079.996-.1-.008c-.133-.01-.252-.039-.381-.056C5.759 7.455 4.385 3.332 4.053 2a7 7 0 0 1-.094-.422l-.016-.1.989-.155.015.1c.007.04.042.254.126.577C5.42 3.328 6.603 6.488 10 7.014c.152.024.299.054.46.067M5.956 10c.019.067.043.13.058.2H4.981c-.023-.071-.062-.131-.089-.2A5.65 5.65 0 0 0 2 7.266l-.108-.046-.093-.035-.166-1.129.611.229c.14.052 2.995 1.168 3.712 3.715M23 9V1H13v10h10zm-1-7v6h-4V7h2V5h1V2zm-3 3v1h-5V4h3v1zm1-3v2h-2V2zm-6 0h3v1h-3zm0 8V7h3v2h5v1zM1 23h10V13H1zm1-1v-1.614A4.1 4.1 0 0 0 3.313 20a2.44 2.44 0 0 0 .6-1.413c.125-1.22.36-1.595 1.65-1.586a1.98 1.98 0 0 1 1.8 1.003c1.01.879 1.552 1.282 2.292 1.048a3 3 0 0 1 .345-.08V22zm8-8v3.937a9 9 0 0 0-.646.161c-.501.159-.765-.247-1.528-.99a2.74 2.74 0 0 0-2.224-1.066 2.54 2.54 0 0 0-2.39 1.045c-.306.453.01 1.248-.5 2.038a1.2 1.2 0 0 1-.712.192V14z" />
+  </svg>
+);
 
 const BASEMAPS = {
   'OpenStreetMap': {
@@ -174,6 +182,26 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
   const [currentBasemap, setCurrentBasemap] = useState<keyof typeof BASEMAPS>('OpenStreetMap');
   const [isBasemapMenuOpen, setIsBasemapMenuOpen] = useState(false);
+  const basemapRef = useRef<HTMLDivElement>(null);
+
+  // Dismiss the basemap menu the way RFS's does: a click anywhere outside it,
+  // or Escape. Bound only while the menu is open, so a closed picker costs the
+  // map nothing on every click.
+  useEffect(() => {
+    if (!isBasemapMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!basemapRef.current?.contains(e.target as Node)) setIsBasemapMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsBasemapMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isBasemapMenuOpen]);
   const [minObs, setMinObs] = useState(0);
   const [showAquiferNames, setShowAquiferNames] = useState(true);
   const [showAquiferIds, setShowAquiferIds] = useState(false);
@@ -939,61 +967,45 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         </div>
       </div>
 
-      {/* Basemap Gallery */}
-      <div className="absolute top-3 right-3 z-[90]">
-        {!isBasemapMenuOpen ? (
-          /* Collapsed - just the icon button */
-          <button
-            onClick={() => setIsBasemapMenuOpen(true)}
-            className="flex items-center justify-center w-8 h-8 bg-white rounded shadow-md border border-slate-300 hover:bg-slate-50 transition-colors"
-            title="Basemap Gallery"
-          >
-            <Layers size={16} className="text-slate-600" />
-          </button>
-        ) : (
-          /* Expanded - gallery panel */
-          <div className="bg-white rounded shadow-lg border border-slate-300 overflow-hidden" style={{ width: '260px' }}>
-            {/* Header with collapse button */}
-            <div className="flex items-center justify-end px-2 py-1 bg-white border-b border-slate-200">
-              <button
-                onClick={() => setIsBasemapMenuOpen(false)}
-                className="flex items-center justify-center w-6 h-6 hover:bg-slate-100 rounded transition-colors"
-                title="Collapse"
-              >
-                <ChevronRight size={16} className="text-slate-500" />
-              </button>
-            </div>
+      {/* Basemap picker, built like the RFS one: the button stays put and its
+          menu opens to the left, rather than the button being replaced by a
+          thumbnail gallery.
 
-            {/* Basemap List */}
-            <div className="max-h-80 overflow-y-auto">
-              {Object.entries(BASEMAPS).map(([name, config]) => (
+          z-[110] clears the raster legend at z-[95]. The two are placed to
+          stack vertically (top-3 against top-14), but an open menu grows down
+          into the legend's space, and at z-[90] it opened underneath it. */}
+      <div className="absolute top-3 right-3 z-[110]" ref={basemapRef}>
+        <div className="relative">
+          <button
+            onClick={() => setIsBasemapMenuOpen(o => !o)}
+            className="rfs-btn map"
+            title="Basemap"
+            aria-label="Basemap"
+            aria-haspopup="true"
+            aria-expanded={isBasemapMenuOpen}
+          >
+            <BasemapIcon />
+          </button>
+
+          {isBasemapMenuOpen && (
+            <div className="rfs-menu rfs-menu-map" role="menu">
+              {Object.keys(BASEMAPS).map(name => (
                 <button
                   key={name}
-                  onClick={() => changeBasemap(name as keyof typeof BASEMAPS)}
-                  className={`w-full flex items-center gap-3 p-2 text-left transition-colors border-2 ${
-                    currentBasemap === name
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-transparent hover:bg-slate-50'
-                  }`}
+                  role="menuitemradio"
+                  aria-checked={currentBasemap === name}
+                  onClick={() => {
+                    changeBasemap(name as keyof typeof BASEMAPS);
+                    setIsBasemapMenuOpen(false);
+                  }}
+                  className={`rfs-opt ${currentBasemap === name ? 'active' : ''}`}
                 >
-                  <img
-                    src={config.thumbnail}
-                    alt={name}
-                    className="w-16 h-16 object-cover rounded flex-shrink-0"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                  <span className={`text-sm ${
-                    currentBasemap === name ? 'font-medium text-slate-900' : 'text-slate-700'
-                  }`}>
-                    {name}
-                  </span>
+                  {name}
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
