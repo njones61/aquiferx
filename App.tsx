@@ -1375,16 +1375,16 @@ const App: React.FC = () => {
           {(selectedWells.length > 0 || rasterResult || crossSectionProfile) && (
             <div
               onMouseDown={handleDividerMouseDown}
-              className="h-1.5 bg-slate-200 hover:bg-blue-400 cursor-row-resize flex-shrink-0 transition-colors relative group"
+              className="h-1.5 bg-[var(--border)] hover:bg-[var(--accent)] cursor-row-resize flex-shrink-0 transition-colors relative group"
             >
               <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center">
-                <div className="w-8 h-0.5 rounded-full bg-slate-400 group-hover:bg-white transition-colors" />
+                <div className="w-8 h-0.5 rounded-full bg-[var(--text-faint)] group-hover:bg-[var(--on-accent)] transition-colors" />
               </div>
             </div>
           )}
           <div
             ref={chartPanelRef}
-            className={`border-t border-slate-200 bg-white flex-shrink-0 ${
+            className={`rfs-chart border-t border-[var(--border)] bg-[var(--surface)] text-[var(--text)] flex-shrink-0 ${
               (selectedWells.length > 0 || rasterResult || crossSectionProfile) ? '' : 'h-0 overflow-hidden'
             }`}
             style={(selectedWells.length > 0 || rasterResult || crossSectionProfile) ? { height: chartHeight } : undefined}
@@ -1407,8 +1407,8 @@ const App: React.FC = () => {
                           onClick={() => setActiveTimeSeriesTab('waterLevel')}
                           className={`px-3 py-1 text-[11px] font-medium rounded-t border border-b-0 transition-colors ${
                             effectiveTab === 'waterLevel'
-                              ? 'bg-white text-slate-800 border-slate-200'
-                              : 'bg-slate-50 text-slate-400 border-transparent hover:text-slate-600'
+                              ? 'bg-[var(--surface)] border-[var(--border)] text-[var(--text)]'
+                              : 'bg-[var(--bg)] text-[var(--text-faint)] border-transparent hover:text-[var(--text-dim)]'
                           }`}
                         >
                           {activeDataType.code === 'wte' ? 'Water Level' : activeDataType.name}
@@ -1419,8 +1419,8 @@ const App: React.FC = () => {
                           onClick={() => setActiveTimeSeriesTab('storageChange')}
                           className={`px-3 py-1 text-[11px] font-medium rounded-t border border-b-0 transition-colors ${
                             effectiveTab === 'storageChange'
-                              ? 'bg-white text-emerald-700 border-slate-200'
-                              : 'bg-slate-50 text-slate-400 border-transparent hover:text-slate-600'
+                              ? 'bg-[var(--surface)] border-[var(--border)] text-[var(--raster)]'
+                              : 'bg-[var(--bg)] text-[var(--text-faint)] border-transparent hover:text-[var(--text-dim)]'
                           }`}
                         >
                           Storage Change
@@ -1431,8 +1431,8 @@ const App: React.FC = () => {
                           onClick={() => setActiveTimeSeriesTab('rasterStats')}
                           className={`px-3 py-1 text-[11px] font-medium rounded-t border border-b-0 transition-colors ${
                             effectiveTab === 'rasterStats'
-                              ? 'bg-white text-violet-700 border-slate-200'
-                              : 'bg-slate-50 text-slate-400 border-transparent hover:text-slate-600'
+                              ? 'bg-[var(--surface)] border-[var(--border)] text-[#c4b5fd]'
+                              : 'bg-[var(--bg)] text-[var(--text-faint)] border-transparent hover:text-[var(--text-dim)]'
                           }`}
                         >
                           Raster Statistics
@@ -1443,8 +1443,8 @@ const App: React.FC = () => {
                           onClick={() => setActiveTimeSeriesTab('crossSection')}
                           className={`px-3 py-1 text-[11px] font-medium rounded-t border border-b-0 transition-colors ${
                             effectiveTab === 'crossSection'
-                              ? 'bg-white text-blue-700 border-slate-200'
-                              : 'bg-slate-50 text-slate-400 border-transparent hover:text-slate-600'
+                              ? 'bg-[var(--surface)] border-[var(--border)] text-[var(--accent)]'
+                              : 'bg-[var(--bg)] text-[var(--text-faint)] border-transparent hover:text-[var(--text-dim)]'
                           }`}
                         >
                           Cross Section
@@ -1452,13 +1452,13 @@ const App: React.FC = () => {
                       )}
                     </div>
                   )}
-                  <div className={`px-4 pb-4 pt-2 flex-1 flex flex-col ${showTabs ? 'border-t border-slate-200' : 'pt-4'}`}>
+                  <div className={`px-4 pb-4 pt-2 flex-1 flex flex-col ${showTabs ? 'border-t border-[var(--border)]' : 'pt-4'}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-3">
                       {effectiveTab === 'waterLevel' ? (
                         <>
                           {!showTabs && <Activity size={18} className="text-blue-500" />}
-                          <h3 className="font-bold text-slate-800">
+                          <h3 className="font-bold text-[var(--text)]">
                             {activeDataType.name}: {
                               selectedWells.length <= 3
                                 ? selectedWells.map(w => showWellIdsOnMap ? `${w.name} (${w.id})` : w.name).join(', ')
@@ -1469,58 +1469,58 @@ const App: React.FC = () => {
                       ) : effectiveTab === 'storageChange' ? (
                         <>
                           {!showTabs && <BarChart3 size={18} className="text-emerald-500" />}
-                          <h3 className="font-bold text-slate-800">
+                          <h3 className="font-bold text-[var(--text)]">
                             {allRasterResults.length > 1 ? 'Storage Change Comparison' : `Storage Change: ${rasterResult!.title}`}
                           </h3>
                         </>
                       ) : effectiveTab === 'rasterStats' ? (
                         <>
-                          <h3 className="font-bold text-slate-800">
+                          <h3 className="font-bold text-[var(--text)]">
                             Raster Statistics: {rasterResult!.title}
                           </h3>
                         </>
                       ) : effectiveTab === 'crossSection' && crossSectionProfile ? (
                         <>
-                          <h3 className="font-bold text-slate-800">
+                          <h3 className="font-bold text-[var(--text)]">
                             Cross Section A–A'
                           </h3>
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-[var(--text-faint)]">
                             ({crossSectionProfile.totalLength.toFixed(0)} {selectedRegion?.lengthUnit || 'ft'})
                           </span>
                         </>
                       ) : rasterResult ? (
-                        <h3 className="font-bold text-slate-800">{rasterResult.title}</h3>
+                        <h3 className="font-bold text-[var(--text)]">{rasterResult.title}</h3>
                       ) : null}
                     </div>
                     <div className="flex items-center space-x-4">
                       {effectiveTab === 'waterLevel' ? (
                         <>
                           {activeDataType.code === 'wte' && (
-                            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
-                              <input type="checkbox" checked={showGSE} onChange={(e) => setShowGSE(e.target.checked)} className="accent-blue-500" />
+                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] cursor-pointer select-none">
+                              <input type="checkbox" checked={showGSE} onChange={(e) => setShowGSE(e.target.checked)} className="rfs-check" />
                               GSE
                             </label>
                           )}
                           {!(selectedModel && selectedWells.length === 1) && (
                             <>
-                              <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
-                                <input type="checkbox" checked={usePCHIP} onChange={(e) => setUsePCHIP(e.target.checked)} className="accent-blue-500" />
+                              <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] cursor-pointer select-none">
+                                <input type="checkbox" checked={usePCHIP} onChange={(e) => setUsePCHIP(e.target.checked)} className="rfs-check" />
                                 PCHIP
                               </label>
-                              <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
-                                <input type="checkbox" checked={showTrendLine} onChange={(e) => setShowTrendLine(e.target.checked)} className="accent-blue-500" />
+                              <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] cursor-pointer select-none">
+                                <input type="checkbox" checked={showTrendLine} onChange={(e) => setShowTrendLine(e.target.checked)} className="rfs-check" />
                                 Trend Line
                               </label>
                             </>
                           )}
                           {!(selectedModel && selectedWells.length === 1 && !showCombinedModel) && (
                             <>
-                              <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
-                                <input type="checkbox" checked={showSmooth} onChange={(e) => setShowSmooth(e.target.checked)} className="accent-blue-500" />
+                              <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] cursor-pointer select-none">
+                                <input type="checkbox" checked={showSmooth} onChange={(e) => setShowSmooth(e.target.checked)} className="rfs-check" />
                                 MAvg
                               </label>
                               {showSmooth && (
-                                <label className="flex items-center gap-1 text-xs text-slate-600 select-none">
+                                <label className="flex items-center gap-1 text-xs text-[var(--text-dim)] select-none">
                                   <span>months:</span>
                                   <input
                                     type="number"
@@ -1531,7 +1531,7 @@ const App: React.FC = () => {
                                       const v = Math.max(3, Math.round(parseInt(e.target.value) / 3) * 3 || 3);
                                       setSmoothMonths(v);
                                     }}
-                                    className="w-12 border border-slate-300 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="rfs-field w-12 px-1 py-0.5 text-xs text-center"
                                   />
                                 </label>
                               )}
@@ -1541,7 +1541,7 @@ const App: React.FC = () => {
                             <button
                               onClick={() => setIsDataEditorOpen(true)}
                               disabled={selectedWells.length !== 1}
-                              className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="rfs-btn auto space-x-1.5"
                               title={selectedWells.length !== 1 ? 'Select a single well to edit' : 'View/Edit measurement data'}
                             >
                               <Table size={14} />
@@ -1551,7 +1551,7 @@ const App: React.FC = () => {
                           <button
                             onClick={exportToCSV}
                             disabled={selectedWellMeasurements.length === 0 && !(selectedModel && selectedWells.length === 1)}
-                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-md text-sm font-medium hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="rfs-btn auto space-x-1.5"
                             title="Export data to CSV"
                           >
                             <Download size={14} />
@@ -1559,27 +1559,27 @@ const App: React.FC = () => {
                           </button>
                           <button
                             onClick={() => setIsChartExpanded(true)}
-                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+                            className="p-1.5 rounded transition-colors text-[var(--text-faint)] hover:text-[var(--accent)] hover:bg-[var(--surface2)]"
                             title="Expand chart"
                           >
                             <Maximize2 size={14} />
                           </button>
-                          <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold">
+                          <div className="text-xs text-[var(--text-faint)] uppercase tracking-wider font-semibold">
                             Units: {activeDataType.unit === 'm' ? 'Meters' : activeDataType.unit === 'ft' ? 'Feet' : activeDataType.unit} ({activeDataType.code.toUpperCase()})
                           </div>
                         </>
                       ) : effectiveTab === 'storageChange' ? (
                         <div className="flex items-center gap-3">
-                          <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
-                            <input type="checkbox" checked={usePCHIP} onChange={(e) => setUsePCHIP(e.target.checked)} className="accent-blue-500" />
+                          <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] cursor-pointer select-none">
+                            <input type="checkbox" checked={usePCHIP} onChange={(e) => setUsePCHIP(e.target.checked)} className="rfs-check" />
                             PCHIP
                           </label>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-600 select-none">
+                          <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] select-none">
                             <span className="font-medium">Storage Coeff.</span>
                             <button
                               onClick={() => setStorageCoeff(Math.max(0.01, +(storageCoeff - 0.05).toFixed(2)))}
                               disabled={storageCoeff <= 0.01}
-                              className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-slate-600 text-xs"
+                              className="w-5 h-5 flex items-center justify-center rounded font-bold text-xs bg-[var(--surface2)] text-[var(--text-dim)] hover:bg-[var(--border)] disabled:opacity-30 disabled:cursor-not-allowed"
                             >&minus;</button>
                             <input
                               type="number"
@@ -1591,25 +1591,25 @@ const App: React.FC = () => {
                                 const v = parseFloat(e.target.value);
                                 if (!isNaN(v) && v >= 0.01 && v <= 1) setStorageCoeff(+(v.toFixed(2)));
                               }}
-                              className="w-14 border border-slate-300 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              className="rfs-field w-14 px-1 py-0.5 text-xs text-center"
                             />
                             <button
                               onClick={() => setStorageCoeff(Math.min(1, +(storageCoeff + 0.05).toFixed(2)))}
                               disabled={storageCoeff >= 1}
-                              className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-slate-600 text-xs"
+                              className="w-5 h-5 flex items-center justify-center rounded font-bold text-xs bg-[var(--surface2)] text-[var(--text-dim)] hover:bg-[var(--border)] disabled:opacity-30 disabled:cursor-not-allowed"
                             >+</button>
                           </label>
                           <select
                             value={storageVolumeUnit}
                             onChange={e => setStorageVolumeUnit(e.target.value)}
-                            className="px-1.5 py-0.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                            className="rfs-field px-1.5 py-0.5 text-xs"
                           >
                             {(selectedRegion?.lengthUnit === 'ft'
                               ? [{ value: 'acre-ft', label: 'acre-ft' }, { value: 'ft3', label: 'ft\u00B3' }]
                               : [{ value: 'MCM', label: 'MCM' }, { value: 'm3', label: 'm\u00B3' }, { value: 'km3', label: 'km\u00B3' }]
                             ).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] text-[var(--text-faint)]">
                             {allRasterResults.length > 1
                               ? `${allRasterResults.length} analyses`
                               : <>{rasterResult!.params.interval} &bull; res={rasterResult!.params.resolution}</>
@@ -1637,7 +1637,7 @@ const App: React.FC = () => {
                               URL.revokeObjectURL(url);
                             }}
                             disabled={storageChartData.length === 0}
-                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-md text-sm font-medium hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="rfs-btn auto space-x-1.5"
                             title="Export data to CSV"
                           >
                             <Download size={14} />
@@ -1645,11 +1645,11 @@ const App: React.FC = () => {
                           </button>
                         </div>
                       ) : effectiveTab === 'rasterStats' ? (
-                        <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold">
+                        <div className="text-xs text-[var(--text-faint)] uppercase tracking-wider font-semibold">
                           {activeDataType.unit === 'm' ? 'Meters' : activeDataType.unit === 'ft' ? 'Feet' : activeDataType.unit} ({activeDataType.code.toUpperCase()})
                         </div>
                       ) : (
-                        <div className="text-[10px] text-slate-400">
+                        <div className="text-[10px] text-[var(--text-faint)]">
                           <RasterFrame>{frame => frame?.date || ''}</RasterFrame>
                         </div>
                       )}
@@ -1660,7 +1660,7 @@ const App: React.FC = () => {
                       {allRasterResults.map((r, i) => (
                         <div key={r.code} className="flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: STORAGE_COLORS[i % STORAGE_COLORS.length] }} />
-                          <span className="text-[11px] text-slate-600">{r.title}</span>
+                          <span className="text-[11px] text-[var(--text-dim)]">{r.title}</span>
                         </div>
                       ))}
                     </div>
@@ -1732,7 +1732,7 @@ const App: React.FC = () => {
                           />
                           <YAxis stroke="#94a3b8" fontSize={10}
                             tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                            label={allRasterResults.length === 1 ? { value: storageVolumeUnit, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#94a3b8', fontSize: 10 } } : undefined}
+                            label={allRasterResults.length === 1 ? { value: storageVolumeUnit, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'var(--chart-text)', fontSize: 10 } } : undefined}
                           />
                           <Tooltip
                             content={({ label, payload }) => {
@@ -1740,8 +1740,8 @@ const App: React.FC = () => {
                               const items = payload.filter(p => p.value !== undefined && p.value !== null);
                               if (items.length === 0) return null;
                               return (
-                                <div className="bg-white rounded shadow-md px-2 py-1.5 text-[10px] border border-slate-200">
-                                  <div className="text-slate-400 mb-1">{new Date(label as number).toLocaleDateString()}</div>
+                                <div className="rfs-tip px-2 py-1.5 text-[10px]">
+                                  <div className="text-[var(--text-faint)] mb-1">{new Date(label as number).toLocaleDateString()}</div>
                                   {items.map((p, i) => {
                                     const resultIdx = parseInt((p.dataKey as string).replace('value_', ''));
                                     const result = allRasterResults[resultIdx];
@@ -1751,7 +1751,7 @@ const App: React.FC = () => {
                                         {allRasterResults.length > 1 && (
                                           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stroke as string }} />
                                         )}
-                                        <span className="text-slate-700 font-medium">
+                                        <span className="text-[var(--text)] font-medium">
                                           {allRasterResults.length > 1 ? `${result.title}: ` : ''}
                                           {(p.value as number)?.toLocaleString(undefined, { maximumFractionDigits: 1 })} {storageVolumeUnit}
                                         </span>

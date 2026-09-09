@@ -92,23 +92,23 @@ const ExpandedChartWindow: React.FC<{
   return (
     <div
       ref={winRef}
-      className="fixed z-[100] bg-white rounded-lg shadow-2xl border border-slate-300 flex flex-col overflow-hidden"
+      className="rfs-card rfs-chart fixed z-[100] flex flex-col overflow-hidden"
       style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
     >
       {/* Title bar — drag to move */}
       <div
-        className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-slate-50 cursor-move select-none flex-shrink-0"
+        className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--surface2)] cursor-move select-none flex-shrink-0"
         onMouseDown={handleTitleMouseDown}
       >
         <div className="flex items-center space-x-3 min-w-0">
-          <Activity size={16} className="text-blue-500 flex-shrink-0" />
-          <span className="font-semibold text-sm text-slate-800 truncate">{title}</span>
-          <span className="text-[11px] text-slate-400 flex-shrink-0">{subtitle}</span>
+          <Activity size={16} className="text-[var(--accent)] flex-shrink-0" />
+          <span className="font-semibold text-sm text-[var(--text)] truncate">{title}</span>
+          <span className="text-[11px] text-[var(--text-faint)] flex-shrink-0">{subtitle}</span>
         </div>
         <button
           onClick={onClose}
           onMouseDown={e => e.stopPropagation()}
-          className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded transition-colors flex-shrink-0"
+          className="p-1 rounded transition-colors flex-shrink-0 text-[var(--text-faint)] hover:text-[var(--accent)] hover:bg-[var(--border)]"
           title="Close"
         >
           <X size={16} />

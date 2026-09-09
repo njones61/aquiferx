@@ -73,33 +73,33 @@ const RasterStatsChart: React.FC<RasterStatsChartProps> = ({
     return [Math.floor(lo - pad), Math.ceil(hi + pad)];
   }, [chartData, showStd, showMedian, showIqr, showMinMax]);
 
-  if (chartData.length === 0) return <div className="text-sm text-slate-400 p-4">No statistics available.</div>;
+  if (chartData.length === 0) return <div className="text-sm text-[var(--text-faint)] p-4">No statistics available.</div>;
 
   return (
     <div className="w-full h-full relative">
       <div className="absolute top-0 right-0 z-10" ref={settingsRef}>
         <button
           onClick={() => setSettingsOpen(p => !p)}
-          className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+          className="p-1 rounded transition-colors text-[var(--text-faint)] hover:text-[var(--accent)] hover:bg-[var(--surface2)]"
           title="Chart settings"
         >
           <Settings size={14} />
         </button>
         {settingsOpen && (
-          <div className="absolute right-0 top-7 bg-white border border-slate-200 rounded-lg shadow-lg p-3 space-y-2 min-w-[180px]">
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700">
+          <div className="rfs-card absolute right-0 top-7 z-10 p-3 space-y-2 min-w-[180px]">
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-dim)]">
               <input type="checkbox" checked={showStd} onChange={e => setShowStd(e.target.checked)} className="accent-blue-500 rounded" />
               Mean ± Std Dev
             </label>
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700">
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-dim)]">
               <input type="checkbox" checked={showMedian} onChange={e => setShowMedian(e.target.checked)} className="accent-purple-500 rounded" />
               Median
             </label>
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700">
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-dim)]">
               <input type="checkbox" checked={showIqr} onChange={e => setShowIqr(e.target.checked)} className="accent-teal-500 rounded" />
               P25–P75 (IQR)
             </label>
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700">
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-dim)]">
               <input type="checkbox" checked={showMinMax} onChange={e => setShowMinMax(e.target.checked)} className="accent-orange-500 rounded" />
               Min–Max
             </label>
@@ -118,7 +118,7 @@ const RasterStatsChart: React.FC<RasterStatsChartProps> = ({
             stroke="#94a3b8" fontSize={10}
             domain={yDomain}
             tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-            label={{ value: `${dataTypeName} (${dataTypeUnit})`, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#94a3b8', fontSize: 10 } }}
+            label={{ value: `${dataTypeName} (${dataTypeUnit})`, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'var(--chart-text)', fontSize: 10 } }}
           />
           <Tooltip
             content={({ label, payload }) => {
@@ -126,8 +126,8 @@ const RasterStatsChart: React.FC<RasterStatsChartProps> = ({
               const d = chartData.find(c => c.date === label);
               if (!d) return null;
               return (
-                <div className="bg-white rounded shadow-md px-3 py-2 text-[10px] border border-slate-200 space-y-0.5">
-                  <div className="text-slate-400 mb-1">{new Date(label as number).toLocaleDateString()} — {d.count} wells</div>
+                <div className="rfs-tip px-3 py-2 text-[10px] space-y-0.5">
+                  <div className="text-[var(--text-faint)] mb-1">{new Date(label as number).toLocaleDateString()} — {d.count} wells</div>
                   <div className="text-blue-700 font-medium">Mean: {d.mean} {dataTypeUnit}</div>
                   {showStd && <div className="text-blue-400">Std Dev: ±{d.std.toFixed(1)}</div>}
                   {showMedian && <div className="text-purple-600">Median: {d.median}</div>}

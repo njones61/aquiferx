@@ -460,7 +460,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
 
   if (measurements.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-50 text-slate-400 text-sm italic">
+      <div className="h-full flex items-center justify-center bg-[var(--bg)] text-[var(--text-faint)] text-sm italic">
         No measurement data available for this well.
       </div>
     );
@@ -608,25 +608,25 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
               const smoothEntries = (payload as any[]).filter(p => p.dataKey?.startsWith('smooth_') && p.value != null);
               if (valEntries.length === 0 && smoothEntries.length === 0) return null;
               return (
-                <div className="bg-white rounded-lg shadow-md px-2.5 py-1.5 text-xs border border-slate-200">
-                  <div className="text-slate-500">{new Date(label as number).toLocaleDateString()}</div>
+                <div className="rfs-tip px-2.5 py-1.5 text-xs">
+                  <div className="text-[var(--text-faint)]">{new Date(label as number).toLocaleDateString()}</div>
                   {valEntries.map((entry: any) => {
                     const wellId = entry.dataKey.replace('val_', '');
                     return (
-                      <div key={entry.dataKey} className="flex items-center gap-1.5 text-slate-700">
+                      <div key={entry.dataKey} className="flex items-center gap-1.5 text-[var(--text)]">
                         <span className="w-1.5 h-1.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: entry.color }} />
                         <span>{entry.value?.toFixed(2)}</span>
                         {selectedWells.length > 1 && (
-                          <span className="text-slate-400">{wellNameMap.get(wellId)}</span>
+                          <span className="text-[var(--text-faint)]">{wellNameMap.get(wellId)}</span>
                         )}
                       </div>
                     );
                   })}
                   {smoothEntries.map((entry: any) => (
-                    <div key={entry.dataKey} className="flex items-center gap-1.5 text-slate-500">
+                    <div key={entry.dataKey} className="flex items-center gap-1.5 text-[var(--text-dim)]">
                       <span className="w-1.5 h-1.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: entry.color }} />
                       <span>{entry.value?.toFixed(2)}</span>
-                      <span className="text-slate-400">{entry.name}</span>
+                      <span className="text-[var(--text-faint)]">{entry.name}</span>
                     </div>
                   ))}
                 </div>
@@ -795,7 +795,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
       {/* Reset Zoom button */}
       {zoomLeft != null && (
         <button
-          className="absolute top-2 right-2 z-10 px-2 py-1 text-[11px] bg-white border border-slate-300 rounded shadow-sm hover:bg-slate-50 text-slate-600 transition-colors"
+          className="rfs-btn auto absolute top-2 right-2 z-10 text-[11px]"
           onClick={(e) => { e.stopPropagation(); setZoomLeft(null); setZoomRight(null); }}
         >
           Reset Zoom
@@ -811,7 +811,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
             onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu(null); setSelectedPoint(null); }}
           />
           <div
-            className="fixed z-50 bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[120px]"
+            className="rfs-menu fixed z-50 min-w-[120px]"
             style={{
               top: Math.min(contextMenu.y, window.innerHeight - 100),
               left: Math.min(contextMenu.x, window.innerWidth - 140),
@@ -819,7 +819,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+              className="rfs-opt"
               onClick={() => {
                 setEditValue(selectedPoint.value.toString());
                 setEditModal(true);
@@ -847,20 +847,20 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
           onClick={(e) => { e.stopPropagation(); setEditModal(false); }}
         >
-          <div className="bg-white rounded-lg shadow-xl p-4 w-64" onClick={(e) => e.stopPropagation()}>
+          <div className="rfs-card p-4 w-64" onClick={(e) => e.stopPropagation()}>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">Date</span>
-                <span className="text-xs text-slate-700">{new Date(selectedPoint.date).toLocaleDateString()}</span>
+                <span className="text-xs text-[var(--text-faint)]">Date</span>
+                <span className="text-xs text-[var(--text)]">{new Date(selectedPoint.date).toLocaleDateString()}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500">{dataType.name}</span>
+                <span className="text-xs text-[var(--text-faint)]">{dataType.name}</span>
                 <input
                   type="number"
                   step="any"
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
-                  className="w-32 border border-slate-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                  className="rfs-field w-32 px-2 py-1 text-xs text-right"
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleSaveEdit();
@@ -870,7 +870,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
             </div>
             <div className="flex justify-end space-x-2 mt-3">
               <button
-                className="px-3 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded transition-colors"
+                className="px-3 py-1 text-xs rounded transition-colors text-[var(--text-dim)] hover:bg-[var(--surface2)] hover:text-[var(--text)]"
                 onClick={() => setEditModal(false)}
               >
                 Cancel
@@ -893,13 +893,13 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
           onClick={(e) => { e.stopPropagation(); setDeleteModal(false); }}
         >
-          <div className="bg-white rounded-lg shadow-xl p-4 w-64" onClick={(e) => e.stopPropagation()}>
-            <p className="text-xs text-slate-600 mb-3">
+          <div className="rfs-card p-4 w-64" onClick={(e) => e.stopPropagation()}>
+            <p className="text-xs text-[var(--text-dim)] mb-3">
               Delete measurement on <span className="font-medium">{new Date(selectedPoint.date).toLocaleDateString()}</span>?
             </p>
             <div className="flex justify-end space-x-2">
               <button
-                className="px-3 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded transition-colors"
+                className="px-3 py-1 text-xs rounded transition-colors text-[var(--text-dim)] hover:bg-[var(--surface2)] hover:text-[var(--text)]"
                 onClick={() => setDeleteModal(false)}
               >
                 Cancel

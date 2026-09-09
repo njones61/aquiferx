@@ -146,7 +146,7 @@ const ModelTimeSeries: React.FC<ModelTimeSeriesProps> = ({
 
   if (modelRows.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-sm text-slate-400">
+      <div className="flex items-center justify-center h-full text-sm text-[var(--text-faint)]">
         No model data for this well
       </div>
     );
@@ -305,16 +305,16 @@ const ModelTimeSeries: React.FC<ModelTimeSeriesProps> = ({
 
       {/* Collapsible log */}
       {model.log && model.log.length > 0 && (
-        <div className="border-t border-slate-200">
+        <div className="border-t border-[var(--border)]">
           <button
             onClick={() => setLogExpanded(!logExpanded)}
-            className="w-full flex items-center gap-1 px-3 py-1 text-[10px] text-slate-500 hover:bg-slate-50"
+            className="w-full flex items-center gap-1 px-3 py-1 text-[10px] text-[var(--text-faint)] hover:bg-[var(--surface2)]"
           >
             {logExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
             Processing Log ({model.log.length} entries)
           </button>
           {logExpanded && (
-            <div className="max-h-[120px] overflow-y-auto px-3 py-1 bg-slate-900 font-mono text-[10px] text-slate-300 space-y-0.5">
+            <div className="rfs-scroll max-h-[120px] overflow-y-auto px-3 py-1 bg-[var(--bg)] font-mono text-[10px] text-[var(--text-dim)] space-y-0.5">
               {model.log.map((msg, i) => (
                 <div key={i} className={msg.startsWith('ERROR') ? 'text-red-400' : msg.includes('R²') ? 'text-emerald-400' : ''}>
                   {msg}

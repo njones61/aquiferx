@@ -33,14 +33,14 @@ const CrossSectionChart: React.FC<CrossSectionChartProps> = ({ profile, frameIdx
           tickFormatter={(v: number) => v.toFixed(0)}
           stroke="#94a3b8"
           fontSize={10}
-          label={{ value: `Distance (${unitLabel})`, position: 'insideBottom', offset: -2, style: { fill: '#94a3b8', fontSize: 10 } }}
+          label={{ value: `Distance (${unitLabel})`, position: 'insideBottom', offset: -2, style: { fill: 'var(--chart-text)', fontSize: 10 } }}
         />
         <YAxis
           stroke="#94a3b8"
           fontSize={10}
           domain={[profile.elevationRange[0], profile.elevationRange[1]]}
           tickFormatter={(v: number) => v.toFixed(0)}
-          label={{ value: `Elevation (${unitLabel})`, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#94a3b8', fontSize: 10 } }}
+          label={{ value: `Elevation (${unitLabel})`, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'var(--chart-text)', fontSize: 10 } }}
         />
         <Tooltip
           content={({ active, payload }) => {
@@ -48,9 +48,9 @@ const CrossSectionChart: React.FC<CrossSectionChartProps> = ({ profile, frameIdx
             const p = payload[0]?.payload;
             if (!p || p.elevation === null) return null;
             return (
-              <div className="bg-white rounded shadow-md px-2 py-1.5 text-[10px] border border-slate-200">
-                <div className="text-slate-400 mb-0.5">{profile.frameDates[frameIdx]}</div>
-                <div className="text-slate-600">Distance: {p.distance.toFixed(0)} {unitLabel}</div>
+              <div className="rfs-tip px-2 py-1.5 text-[10px]">
+                <div className="text-[var(--text-faint)] mb-0.5">{profile.frameDates[frameIdx]}</div>
+                <div className="text-[var(--text-dim)]">Distance: {p.distance.toFixed(0)} {unitLabel}</div>
                 <div className="text-blue-700 font-medium">Elevation: {p.elevation.toFixed(1)} {unitLabel}</div>
               </div>
             );

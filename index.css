@@ -75,6 +75,13 @@
   --danger-text: #fca5a5;
   --warn-text: #fcd34d;
 
+  /* Chart chrome. Kept separate from the surface tokens because a chart's
+     grid has to sit further back than any border does — it is a reading aid
+     behind the data, not an edge. */
+  --chart-grid: rgba(148, 163, 184, 0.14);
+  --chart-axis: #64748b;
+  --chart-text: #b6c2d3;
+
   /* One hue per level of the tree, far enough apart to tell at 11px on a dark
      ground. The model moved off amber when the aquifer took yellow — two
      adjacent levels lighting up in the same hue is unreadable. */
@@ -541,4 +548,44 @@
 
 .leaflet-tooltip-right::before {
   border-right-color: var(--border);
+}
+
+/* ── Charts ───────────────────────────────────────────────────────────────
+   Recharts writes its colors as SVG presentation attributes, and those lose to
+   any stylesheet rule, so the grid and axes are re-colored here rather than by
+   editing the props in four chart components. Series colors are deliberately
+   untouched: a line's color is data, and it should mean the same thing whatever
+   the panel behind it is doing. */
+.rfs-chart .recharts-cartesian-grid line {
+  stroke: var(--chart-grid);
+}
+
+.rfs-chart .recharts-cartesian-axis-line,
+.rfs-chart .recharts-cartesian-axis-tick-line {
+  stroke: var(--chart-axis);
+}
+
+.rfs-chart .recharts-text,
+.rfs-chart .recharts-cartesian-axis-tick-value {
+  fill: var(--chart-text);
+}
+
+/* The band Recharts paints under the cursor. Its default is a near-black wash
+   that swallows the plot on a dark ground. */
+.rfs-chart .recharts-tooltip-cursor {
+  fill: rgba(148, 163, 184, 0.12);
+}
+
+.rfs-chart .recharts-reference-line line {
+  stroke-opacity: 0.9;
+}
+
+/* A tooltip card. Recharts' own container is inline-styled, so these are the
+   hand-rolled `content={...}` cards the charts render instead. */
+.rfs-tip {
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
