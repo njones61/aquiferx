@@ -88,7 +88,14 @@
   --size: 36px;
 }
 
+/* color-scheme is what tells the browser to draw its *own* parts of a control
+   dark — a number field's spinner arrows, the caret, selection, scrollbars.
+   Without it those stay light-mode and a spinner is near-invisible against
+   var(--bg). Declared per dark surface rather than on :root, because the rest
+   of the app — the import wizards, the dialogs, the chart pane — is still
+   light and would get dark native controls on white cards. */
 .rfs-panel {
+  color-scheme: dark;
   font-family: "Open Sans", "Segoe UI", system-ui, sans-serif;
   background: var(--surface);
   color: var(--text);
@@ -283,6 +290,7 @@
 
 /* ── Menus and inline editors inside the panel ── */
 .rfs-menu {
+  color-scheme: dark;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -328,6 +336,7 @@
 }
 
 .rfs-input {
+  color-scheme: dark;
   width: 100%;
   padding: 3px 7px;
   font-size: 12px;
@@ -389,6 +398,7 @@
    the animation player. RFS's `.card`: a surface, a border, and a shadow deep
    enough to hold its edge against imagery. */
 .rfs-card {
+  color-scheme: dark;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -399,6 +409,7 @@
 /* A number or text field on one of those cards. Neutral until touched, then
    accent — the same two states RFS gives every input. */
 .rfs-field {
+  color-scheme: dark;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);
