@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Layers, Map as MapIcon, Database, ChevronRight, Activity, Wand2, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
+import { Layers, Map as MapIcon, Database, ChevronRight, Activity, Wand2, Grid3x3, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
 import { Region, Aquifer, Well, Measurement, DataType, RasterAnalysisResult, RasterAnalysisMeta, CrossSectionProfile, ImputationModelResult, ImputationModelMeta } from './types';
 import { loadAllData } from './services/dataLoader';
 import { freshFetch, toCsv, escapeCsvField, WELLS_CSV_HEADERS } from './services/importUtils';
@@ -1230,7 +1230,7 @@ const App: React.FC = () => {
                 data-tip="Spatial Analysis"
                 aria-label="Spatial Analysis"
               >
-                <BarChart3 size={20} className="text-[#34d399]" />
+                <Grid3x3 size={20} className="text-[#34d399]" />
               </button>
             )}
             {selectedAquifer && selectedDataType === 'wte' && (
@@ -1465,7 +1465,7 @@ const App: React.FC = () => {
                     <div className="flex items-center space-x-3">
                       {effectiveTab === 'waterLevel' ? (
                         <>
-                          {!showTabs && <Activity size={18} className="text-blue-500" />}
+                          {!showTabs && <Activity size={18} className="text-[#60a5fa]" />}
                           <h3 className="font-bold text-[var(--text)]">
                             {activeDataType.name}: {
                               selectedWells.length <= 3
@@ -1476,7 +1476,7 @@ const App: React.FC = () => {
                         </>
                       ) : effectiveTab === 'storageChange' ? (
                         <>
-                          {!showTabs && <BarChart3 size={18} className="text-emerald-500" />}
+                          {!showTabs && <BarChart3 size={18} className="text-[#34d399]" />}
                           <h3 className="font-bold text-[var(--text)]">
                             {allRasterResults.length > 1 ? 'Storage Change Comparison' : `Storage Change: ${rasterResult!.title}`}
                           </h3>
