@@ -31,7 +31,9 @@ import {
   TREND_CATEGORIES, INSUFFICIENT_COLOR, MS_PER_YEAR, computeSlope, classifySlope, median,
 } from './utils/trends';
 
-const STORAGE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+// Lifted to the 400s with the well series in TimeSeriesChart, and kept in the
+// same order so a given analysis holds its color.
+const STORAGE_COLORS = ['#34d399', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '#f472b6', '#2dd4bf', '#fb923c'];
 
 
 const App: React.FC = () => {

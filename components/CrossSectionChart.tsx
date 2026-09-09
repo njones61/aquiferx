@@ -59,10 +59,10 @@ const CrossSectionChart: React.FC<CrossSectionChartProps> = ({ profile, frameIdx
         <Area
           type="monotone"
           dataKey="elevation"
-          stroke="#2563eb"
+          stroke="#60a5fa"
           strokeWidth={1.5}
           fill="#93c5fd"
-          fillOpacity={0.6}
+          fillOpacity={0.35}
           dot={false}
           isAnimationActive={false}
           connectNulls={false}

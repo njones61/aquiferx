@@ -6,12 +6,18 @@ import {
 import { Measurement, Well, DataType } from '../types';
 import { interpolatePCHIP, kernelSmooth } from '../utils/interpolation';
 
+// Tailwind 400s. These were the 500s, chosen when the plot sat on white; on a
+// dark ground that whole rank reads muddy. Lifted as a set rather than one at a
+// time — a single brighter line among seven darker ones looks like it means
+// something, and with several wells selected these are read against each other.
 const SERIES_COLORS = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
-  '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'
+  '#60a5fa', '#f87171', '#34d399', '#fbbf24',
+  '#a78bfa', '#f472b6', '#2dd4bf', '#fb923c'
 ];
 
-const GSE_COLOR = '#8B4513';
+// Ground surface elevation. Saddle brown at #8B4513 was nearly invisible here;
+// this is the same hue carried up to sit alongside the palette above.
+const GSE_COLOR = '#c08457';
 
 
 const SMOOTH_COLOR = '#f97316'; // orange

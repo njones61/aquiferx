@@ -143,12 +143,12 @@ const RasterStatsChart: React.FC<RasterStatsChartProps> = ({
           <Area type="monotone" dataKey="iqrBand" stackId="iqr" stroke="none" fill="#5eead4" fillOpacity={showIqr ? 0.3 : 0} isAnimationActive={false} />
           <Area type="monotone" dataKey="stdBase" stackId="std" stroke="none" fill="transparent" fillOpacity={0} isAnimationActive={false} />
           <Area type="monotone" dataKey="stdBand" stackId="std" stroke="none" fill="#93c5fd" fillOpacity={showStd ? 0.35 : 0} isAnimationActive={false} />
-          <Line type="monotone" dataKey="mean" stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="mean" stroke="#60a5fa" strokeWidth={2} dot={false} isAnimationActive={false} />
           {showMedian && (
-            <Line type="monotone" dataKey="median" stroke="#9333ea" strokeWidth={1.5} strokeDasharray="4 2" dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="median" stroke="#c084fc" strokeWidth={1.5} strokeDasharray="4 2" dot={false} isAnimationActive={false} />
           )}
           {referenceDate && (
-            <ReferenceLine x={referenceDate} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1.5} />
+            <ReferenceLine x={referenceDate} stroke="#f87171" strokeDasharray="4 3" strokeWidth={1.5} />
           )}
         </ComposedChart>
       </ResponsiveContainer>
