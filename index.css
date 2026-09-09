@@ -39,3 +39,292 @@
     opacity: 0;
   }
 }
+
+/* ── GEOGLOWS control-column theme ────────────────────────────────────────
+   The left panel is styled to match webapp-rfs-v3, so the two apps read as
+   one family: dark surfaces, Open Sans, a cyan accent, uppercase tracked-out
+   section eyebrows. Tokens are lifted from that app's src/styles/tokens.css.
+
+   Everything is scoped under .rfs-panel — the map, the top header, and the
+   chart pane stay on the light Tailwind palette they already use. */
+
+@font-face {
+  font-family: "Open Sans";
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/opensans.woff2") format("woff2");
+}
+
+.rfs-panel {
+  --bg: #0a0e17;
+  --surface: #111827;
+  --surface2: #1e293b;
+  --border: #334155;
+  --text: #f8fafc;
+  --text-dim: #dde5ee;
+  --text-faint: #b6c2d3;
+  --accent: #38bdf8;
+  --on-accent: #04121b;
+  --check: #22c55e;
+  --danger: #ef4444;
+  --danger-text: #fca5a5;
+
+  /* One hue per level of the tree, far enough apart to tell at 11px on a dark
+     ground. The model moved off amber when the aquifer took yellow — two
+     adjacent levels lighting up in the same hue is unreadable. */
+  --aquifer: #facc15;
+  --raster: #34d399;
+  --model: #f472b6;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --size: 36px;
+
+  font-family: "Open Sans", "Segoe UI", system-ui, sans-serif;
+  background: var(--surface);
+  color: var(--text);
+  border-right: 1px solid var(--border);
+}
+
+/* ── Header: wordmark and account beside it, title, then the action row ── */
+.rfs-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.rfs-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The logo file is a dark wordmark, so it carries its own white chip rather
+   than disappearing into the panel. */
+.rfs-brand img {
+  display: block;
+  height: 30px;
+  width: auto;
+  background: #fff;
+  border-radius: var(--r-md);
+  padding: 6px 9px;
+}
+
+/* The account slot sits beside the wordmark rather than at the right edge, so
+   the library's menu opens rightward into the panel instead of off it. */
+.rfs-panel #auth-action .geoglows-auth-action-menu {
+  left: 0;
+  right: auto;
+}
+
+/* The library sets the button's size, weight and color but not its font-family
+   or line-height, so in RFS — which has no reset for form elements — it renders
+   in the UA default at `line-height: normal`, 32px tall. Tailwind's preflight
+   (`button { font: inherit }`) handed ours Open Sans at 1.5, inflating it to
+   37px and making it the tallest thing in the header. `revert` drops both back
+   to the UA stylesheet, which is the state the button is in over in RFS. */
+.rfs-panel .geoglows-auth-action-signin {
+  font-family: revert;
+  line-height: revert;
+}
+
+.rfs-title {
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--accent);
+}
+
+/* ── Section eyebrow: the centered, tracked-out caps heading ── */
+.rfs-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-align: center;
+  padding: 12px 18px 8px;
+}
+
+.rfs-rule {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 8px 18px;
+}
+
+/* ── Buttons ── */
+.rfs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.rfs-btn.icon {
+  width: var(--size);
+  height: var(--size);
+  padding: 0;
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+
+.rfs-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.rfs-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rfs-btn.danger:hover:not(:disabled) {
+  color: var(--danger-text);
+  border-color: var(--danger);
+}
+
+/* ── Tree rows ──
+   Four ranks, each a step smaller and quieter than the one above it. The RFS
+   panel runs its list rows at 14px; a region tree is four levels deep, so the
+   scale starts lower and the nesting still reads.
+
+   A selected row is edged in the color that entity is drawn with on the map,
+   the same idiom the RFS explorer uses for the active selection method. */
+.rfs-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.rfs-row:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.rfs-row.sel {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.rfs-row-region {
+  padding: 5px 8px 5px 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rfs-row-region.sel {
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--accent);
+}
+
+.rfs-row-aquifer {
+  padding: 4px 8px 4px 18px;
+  font-size: 12px;
+}
+
+.rfs-row-aquifer.sel {
+  box-shadow: inset 3px 0 0 var(--aquifer);
+  color: var(--aquifer);
+}
+
+/* 50px, not 34: a leaf carries no chevron block, so its icon starts at the
+   padding edge while a region's and an aquifer's start 20px past it. The ladder
+   is measured at the icons — 26 / 38 / 50, a uniform 12px per level. */
+.rfs-row-leaf {
+  padding: 3px 8px 3px 50px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.rfs-row-leaf.sel-raster {
+  background: var(--surface2);
+  box-shadow: inset 3px 0 0 var(--raster);
+  color: var(--raster);
+}
+
+.rfs-row-leaf.sel-compare {
+  background: var(--surface2);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--accent);
+}
+
+.rfs-row-leaf.sel-model {
+  background: var(--surface2);
+  box-shadow: inset 3px 0 0 var(--model);
+  color: var(--model);
+}
+
+/* ── Menus and inline editors inside the panel ── */
+.rfs-menu {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+}
+
+.rfs-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.rfs-opt:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.rfs-opt.danger {
+  color: var(--danger-text);
+}
+
+.rfs-opt.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.rfs-input {
+  width: 100%;
+  padding: 3px 7px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  outline: none;
+}
+
+/* The scrollbar the panel's list runs in. */
+.rfs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}

@@ -2,6 +2,13 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Region, Aquifer, RasterAnalysisMeta, ImputationModelMeta } from '../types';
 import { MapPin, Droplets, MoreVertical, Pencil, Trash2, Download, Layers, Loader2, Info, Check, X as XIcon, ChevronRight, ChevronDown, Activity, Eye, EyeOff } from 'lucide-react';
+import { mountGeoglowsAuth, unmountGeoglowsAuth } from '../services/geoglowsAuth';
+
+// The GEOGLOWS wordmark and where it links. Env-driven so a fork can point the
+// panel at its own branding without touching the component.
+const LOGO_SRC = import.meta.env.VITE_LOGO_SRC || 'https://cdn.apps.geoglows.org/static/images/geoglows-logo-nav.webp';
+const LOGO_HREF = import.meta.env.VITE_LOGO_HREF || 'https://apps.geoglows.org';
+const LOGO_ALT = import.meta.env.VITE_LOGO_ALT || 'GEOGLOWS';
 
 interface SidebarProps {
   regions: Region[];
@@ -99,12 +106,22 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [expandedRegionIds, setExpandedRegionIds] = useState<Set<string>>(new Set());
   const [expandedAquiferIds, setExpandedAquiferIds] = useState<Set<string>>(new Set());
   const [lastActiveRasterByAquifer, setLastActiveRasterByAquifer] = useState<Map<string, string>>(new Map());
+  // Where arrow keys move from. Nothing draws it — it survives a click so the
+  // keyboard can pick up wherever the mouse left off.
   const [focusedItemKey, setFocusedItemKey] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const editModalRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
+
+  // The account slot renders itself into the #auth-action div above, so it can
+  // only be wired once that div is in the DOM — and it has to be rebuilt on
+  // every mount, because a remount hands it a fresh, empty div.
+  useEffect(() => {
+    mountGeoglowsAuth();
+    return unmountGeoglowsAuth;
+  }, []);
 
   // --- Derived data ---
   const aquifersByRegion = useMemo(() => {
@@ -359,6 +376,24 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [selectedAquifer, setSelectedAquifer, selectedRegion, setSelectedRegion, regions, visibleRegionIds, onToggleRegionVisibility, rastersByAquifer, modelsByAquifer, activeRasterCode, lastActiveRasterByAquifer, onLoadRaster]);
 
+  // Unloading a layer hands the selection back to whatever it hung off — the
+  // aquifer it belongs to, or the region itself where the region is single-unit
+  // and the layers hang directly off it. Otherwise dismissing a raster leaves
+  // nothing selected at any level and the breadcrumb jumps to Home.
+  //
+  // This sets the aquifer directly rather than going through handleAquiferClick,
+  // whose "restore the last active raster" branch would immediately reload the
+  // layer that was just dismissed.
+  const selectParentOfLayer = useCallback((meta: { regionId: string; aquiferId: string }) => {
+    const region = regions.find(r => r.id === meta.regionId);
+    if (region?.singleUnit) {
+      if (selectedRegion?.id !== region.id) setSelectedRegion(region);
+      return;
+    }
+    const aquifer = allAquifers.find(a => a.id === meta.aquiferId && a.regionId === meta.regionId);
+    if (aquifer && selectedAquifer?.id !== aquifer.id) setSelectedAquifer(aquifer);
+  }, [regions, allAquifers, selectedRegion, selectedAquifer, setSelectedRegion, setSelectedAquifer]);
+
   const handleAquiferChevronClick = useCallback((aquiferId: string) => {
     setExpandedAquiferIds(prev => {
       const next = new Set(prev);
@@ -446,6 +481,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         if (m) {
           if (activeRasterCode === rasterMetaKey(m)) {
             onUnloadRaster();
+            selectParentOfLayer(m);
           } else {
             onLoadRaster(m);
           }
@@ -455,13 +491,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         if (m) {
           if (activeModelCode === modelMetaKey(m)) {
             onUnloadModel();
+            selectParentOfLayer(m);
           } else {
             onLoadModel(m);
           }
         }
       }
     }
-  }, [flatItems, focusedItemKey, expandedRegionIds, expandedAquiferIds, regions, allAquifers, rasterMeta, activeRasterCode, modelMeta, activeModelCode, handleRegionClick, handleAquiferClick, handleRegionChevronClick, handleAquiferChevronClick, onLoadRaster, onUnloadRaster, onLoadModel, onUnloadModel]);
+  }, [flatItems, focusedItemKey, expandedRegionIds, expandedAquiferIds, regions, allAquifers, rasterMeta, activeRasterCode, modelMeta, activeModelCode, handleRegionClick, handleAquiferClick, handleRegionChevronClick, handleAquiferChevronClick, onLoadRaster, onUnloadRaster, onLoadModel, onUnloadModel, selectParentOfLayer]);
 
   // --- Render helpers ---
 
@@ -475,14 +512,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     const isRasterConfirming = confirmDelete === rasterMenuKey;
     const isRasterEditing = editing === `raster-${m.regionId}-${m.aquiferId}-${rasterKey}`;
     const itemKey = `raster-${m.regionId}-${m.aquiferId}-${rasterKey}`;
-    const isFocused = focusedItemKey === itemKey;
     const displayTitle = `${m.dataType}_${m.title}`;
 
     if (isRasterConfirming) {
       return (
-        <div key={rasterKey} className="pl-16 pr-2 py-1" data-item-key={itemKey}>
-          <div className="px-2 py-1.5 rounded bg-red-50 border border-red-200 text-xs">
-            <p className="text-red-700 font-medium mb-1.5">Delete "{displayTitle}"?</p>
+        <div key={rasterKey} className="pl-[50px] pr-2 py-1" data-item-key={itemKey}>
+          <div className="px-2 py-1.5 rounded border text-xs bg-red-500/10 border-red-500/40">
+            <p className="text-[var(--danger-text)] font-medium mb-1.5">Delete "{displayTitle}"?</p>
             <div className="flex space-x-2">
               <button
                 onClick={() => { onDeleteRaster(m); setConfirmDelete(null); }}
@@ -492,7 +528,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </button>
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="px-2 py-0.5 bg-white text-slate-600 rounded text-[10px] font-medium border border-slate-200 hover:bg-slate-50"
+                className="rfs-btn px-2 py-0.5 text-[10px]"
               >
                 Cancel
               </button>
@@ -504,7 +540,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     if (isRasterEditing) {
       return (
-        <div key={rasterKey} className="pl-16 pr-2 flex items-center gap-1 py-1" data-item-key={itemKey}>
+        <div key={rasterKey} className="pl-[50px] pr-2 flex items-center gap-1 py-1" data-item-key={itemKey}>
           <input
             autoFocus
             value={editValue}
@@ -519,7 +555,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
               if (e.key === 'Escape') setEditing(null);
             }}
-            className="flex-1 min-w-0 px-1.5 py-0.5 text-xs border border-emerald-400 rounded outline-none focus:ring-2 focus:ring-emerald-300"
+            className="rfs-input flex-1 min-w-0"
           />
           <button
             onClick={() => {
@@ -529,13 +565,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
               setEditing(null);
             }}
-            className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded"
+            className="p-0.5 rounded text-[var(--raster)] hover:bg-white/10"
           >
             <Check size={12} />
           </button>
           <button
             onClick={() => setEditing(null)}
-            className="p-0.5 text-slate-400 hover:bg-slate-100 rounded"
+            className="p-0.5 rounded text-[var(--text-faint)] hover:bg-white/10"
           >
             <XIcon size={12} />
           </button>
@@ -549,14 +585,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="relative group/raster"
         data-item-key={itemKey}
       >
-        <div className={`flex items-center pl-16 pr-2 rounded transition-colors ${
-          isFocused ? 'ring-2 ring-inset ring-blue-400' : ''
-        } ${
-          isActive
-            ? 'bg-emerald-50'
-            : isCompare
-              ? 'bg-blue-50'
-              : 'hover:bg-slate-50'
+        <div className={`rfs-row rfs-row-leaf ${
+          isActive ? 'sel-raster' : isCompare ? 'sel-compare' : ''
         }`}>
           <button
             onClick={(e) => {
@@ -565,24 +595,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onToggleCompareRaster(m);
               } else if (isActive) {
                 onUnloadRaster();
+                selectParentOfLayer(m);
               } else {
                 onLoadRaster(m);
               }
             }}
-            className={`flex-1 text-left pr-1 py-1.5 text-xs flex items-center gap-2 min-w-0 ${
-              isActive
-                ? 'text-emerald-700 font-medium'
-                : isCompare
-                  ? 'text-blue-700 font-medium'
-                  : 'text-slate-500 hover:text-slate-700'
+            className={`flex-1 text-left pr-1 flex items-center gap-2 min-w-0 ${
+              isActive || isCompare ? 'font-semibold' : ''
             }`}
           >
             {isLoading
               ? <Loader2 size={12} className="flex-shrink-0 animate-spin" />
-              : <Layers size={12} className={`flex-shrink-0 ${isActive ? 'text-emerald-500' : isCompare ? 'text-blue-500' : 'text-slate-300'}`} />}
+              : <Layers size={12} className="flex-shrink-0 opacity-70" />}
             <span className="truncate">{displayTitle}</span>
-            {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />}
-            {isCompare && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
+            {(isActive || isCompare) && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />}
           </button>
           <div
             onClick={e => {
@@ -590,7 +616,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               setMenuOpen(isRasterMenuOpen ? null : rasterMenuKey);
               setConfirmDelete(null);
             }}
-            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/raster:opacity-100 transition-opacity cursor-pointer hover:bg-slate-200 ${
+            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/raster:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
               isRasterMenuOpen ? 'opacity-100' : ''
             }`}
           >
@@ -598,7 +624,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
         {isRasterMenuOpen && (
-          <div ref={menuRef} className="absolute right-1 top-full mt-0.5 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 min-w-[100px]">
+          <div ref={menuRef} className="rfs-menu absolute right-1 top-full mt-0.5 z-50 min-w-[110px]">
             {onRenameRaster && (
               <button
                 onClick={() => {
@@ -606,7 +632,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setEditing(`raster-${m.regionId}-${m.aquiferId}-${rasterKey}`);
                   setEditValue(m.title);
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 <Pencil size={11} />
                 <span>Edit</span>
@@ -615,7 +641,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {onGetRasterInfo && (
               <button
                 onClick={() => { setMenuOpen(null); onGetRasterInfo(m); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 <Info size={11} />
                 <span>Get Info</span>
@@ -623,7 +649,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
             <button
               onClick={() => { setMenuOpen(null); setConfirmDelete(rasterMenuKey); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
+              className="rfs-opt danger"
             >
               <Trash2 size={11} />
               <span>Delete</span>
@@ -653,13 +679,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     const isModelConfirming = confirmDelete === modelMenuKey;
     const isModelEditing = editing === `model-${m.regionId}-${m.aquiferId}-${m.code}`;
     const itemKey = `model-${m.regionId}-${m.aquiferId}-${m.code}`;
-    const isFocused = focusedItemKey === itemKey;
 
     if (isModelConfirming) {
       return (
-        <div key={`model-${m.code}`} className="pl-16 pr-2 py-1" data-item-key={itemKey}>
-          <div className="px-2 py-1.5 rounded bg-red-50 border border-red-200 text-xs">
-            <p className="text-red-700 font-medium mb-1.5">Delete "{m.title}"?</p>
+        <div key={`model-${m.code}`} className="pl-[50px] pr-2 py-1" data-item-key={itemKey}>
+          <div className="px-2 py-1.5 rounded border text-xs bg-red-500/10 border-red-500/40">
+            <p className="text-[var(--danger-text)] font-medium mb-1.5">Delete "{m.title}"?</p>
             <div className="flex space-x-2">
               <button
                 onClick={() => { onDeleteModel(m); setConfirmDelete(null); }}
@@ -669,7 +694,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </button>
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="px-2 py-0.5 bg-white text-slate-600 rounded text-[10px] font-medium border border-slate-200 hover:bg-slate-50"
+                className="rfs-btn px-2 py-0.5 text-[10px]"
               >
                 Cancel
               </button>
@@ -681,7 +706,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     if (isModelEditing) {
       return (
-        <div key={`model-${m.code}`} className="pl-16 pr-2 flex items-center gap-1 py-1" data-item-key={itemKey}>
+        <div key={`model-${m.code}`} className="pl-[50px] pr-2 flex items-center gap-1 py-1" data-item-key={itemKey}>
           <input
             autoFocus
             value={editValue}
@@ -696,7 +721,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
               if (e.key === 'Escape') setEditing(null);
             }}
-            className="flex-1 min-w-0 px-1.5 py-0.5 text-xs border border-amber-400 rounded outline-none focus:ring-2 focus:ring-amber-300"
+            className="rfs-input flex-1 min-w-0"
           />
           <button
             onClick={() => {
@@ -706,13 +731,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
               setEditing(null);
             }}
-            className="p-0.5 text-amber-600 hover:bg-amber-50 rounded"
+            className="p-0.5 rounded text-[var(--model)] hover:bg-white/10"
           >
             <Check size={12} />
           </button>
           <button
             onClick={() => setEditing(null)}
-            className="p-0.5 text-slate-400 hover:bg-slate-100 rounded"
+            className="p-0.5 rounded text-[var(--text-faint)] hover:bg-white/10"
           >
             <XIcon size={12} />
           </button>
@@ -726,31 +751,28 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="relative group/model"
         data-item-key={itemKey}
       >
-        <div className={`flex items-center pl-16 pr-2 rounded transition-colors ${
-          isFocused ? 'ring-2 ring-inset ring-blue-400' : ''
-        } ${
-          isActive ? 'bg-amber-50' : 'hover:bg-slate-50'
+        <div className={`rfs-row rfs-row-leaf ${
+          isActive ? 'sel-model' : ''
         }`}>
           <button
             onClick={() => {
               setFocusedItemKey(itemKey);
               if (isActive) {
                 onUnloadModel();
+                selectParentOfLayer(m);
               } else {
                 onLoadModel(m);
               }
             }}
-            className={`flex-1 text-left pr-1 py-1.5 text-xs flex items-center gap-2 min-w-0 ${
-              isActive
-                ? 'text-amber-700 font-medium'
-                : 'text-slate-500 hover:text-slate-700'
+            className={`flex-1 text-left pr-1 flex items-center gap-2 min-w-0 ${
+              isActive ? 'font-semibold' : ''
             }`}
           >
             {isModelLoading
               ? <Loader2 size={12} className="flex-shrink-0 animate-spin" />
-              : <Activity size={12} className={`flex-shrink-0 ${isActive ? 'text-amber-500' : 'text-slate-300'}`} />}
+              : <Activity size={12} className="flex-shrink-0 opacity-70" />}
             <span className="truncate">{m.title}</span>
-            {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />}
+            {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />}
           </button>
           <div
             onClick={e => {
@@ -758,7 +780,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               setMenuOpen(isModelMenuOpen ? null : modelMenuKey);
               setConfirmDelete(null);
             }}
-            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/model:opacity-100 transition-opacity cursor-pointer hover:bg-slate-200 ${
+            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/model:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
               isModelMenuOpen ? 'opacity-100' : ''
             }`}
           >
@@ -766,7 +788,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
         {isModelMenuOpen && (
-          <div ref={menuRef} className="absolute right-1 top-full mt-0.5 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 min-w-[100px]">
+          <div ref={menuRef} className="rfs-menu absolute right-1 top-full mt-0.5 z-50 min-w-[110px]">
             {onRenameModel && (
               <button
                 onClick={() => {
@@ -774,7 +796,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setEditing(`model-${m.regionId}-${m.aquiferId}-${m.code}`);
                   setEditValue(m.title);
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 <Pencil size={11} />
                 <span>Edit</span>
@@ -783,7 +805,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {onGetModelInfo && (
               <button
                 onClick={() => { setMenuOpen(null); onGetModelInfo(m); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 <Info size={11} />
                 <span>Get Info</span>
@@ -791,7 +813,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
             <button
               onClick={() => { setMenuOpen(null); setConfirmDelete(modelMenuKey); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
+              className="rfs-opt danger"
             >
               <Trash2 size={11} />
               <span>Delete</span>
@@ -823,14 +845,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     const hasRasters = rasters.length > 0;
     const isExpanded = expandedAquiferIds.has(a.id);
     const itemKey = `aquifer-${a.id}`;
-    const isFocused = focusedItemKey === itemKey;
 
     if (isConfirming) {
       return (
         <div key={a.id} data-item-key={itemKey}>
-          <div className="pl-6 pr-2 py-1">
-            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs">
-              <p className="text-red-700 font-medium mb-2">Delete "{a.name}" and its wells?</p>
+          <div className="pl-[18px] pr-2 py-1">
+            <div className="px-3 py-2 rounded-lg border text-xs bg-red-500/10 border-red-500/40">
+              <p className="text-[var(--danger-text)] font-medium mb-2">Delete "{a.name}" and its wells?</p>
               <div className="flex space-x-2">
                 <button
                   onClick={() => { onDeleteAquifer(a.id); setConfirmDelete(null); }}
@@ -840,7 +861,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button
                   onClick={() => setConfirmDelete(null)}
-                  className="px-3 py-1 bg-white text-slate-600 rounded text-[10px] font-medium border border-slate-200 hover:bg-slate-50"
+                  className="rfs-btn px-3 py-1 text-[10px]"
                 >
                   Cancel
                 </button>
@@ -861,12 +882,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 handleAquiferClick(a);
               }
             }}
-            className={`w-full text-left pl-6 pr-2 py-1.5 text-xs transition-all flex items-center group ${
-              isFocused ? 'ring-2 ring-inset ring-blue-400' : ''
-            } ${
-              isSelected
-                ? 'bg-indigo-500 text-white'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-500'
+            className={`rfs-row rfs-row-aquifer group ${
+              isSelected ? 'sel' : ''
             }`}
           >
             {/* Chevron */}
@@ -876,9 +893,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation();
                   handleAquiferChevronClick(a.id);
                 }}
-                className={`w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors ${
-                  isSelected ? 'hover:bg-indigo-400' : 'hover:bg-slate-200'
-                }`}
+                className="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors hover:bg-white/15"
               >
                 {isExpanded
                   ? <ChevronDown size={12} />
@@ -887,7 +902,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             ) : (
               <div className="w-4 h-4 flex-shrink-0 mr-1" />
             )}
-            <Droplets size={12} className={`mr-2 flex-shrink-0 ${isSelected ? 'text-indigo-200' : 'text-slate-300'}`} />
+            <Droplets size={12} className="mr-2 flex-shrink-0 opacity-60" />
             <div className="flex-1 min-w-0">
               {isEditing ? (
                 <input
@@ -900,10 +915,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                   }}
                   onBlur={() => confirmEditAquifer(a.id)}
                   onClick={e => e.stopPropagation()}
-                  className="bg-white text-slate-800 border border-indigo-400 rounded px-1.5 py-0.5 text-xs font-medium w-full outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="rfs-input"
                 />
               ) : (
-                <span className="font-medium truncate block">{a.name}</span>
+                <span className="truncate block">{a.name}</span>
               )}
             </div>
             {!isEditing && (
@@ -913,26 +928,26 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setMenuOpen(isMenuOpen ? null : `aquifer-${a.id}`);
                   setConfirmDelete(null);
                 }}
-                className={`p-0.5 rounded ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ${
-                  isSelected ? 'hover:bg-indigo-400' : 'hover:bg-slate-200'
-                } ${isMenuOpen ? 'opacity-100' : ''}`}
+                className={`p-0.5 rounded ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
+                  isMenuOpen ? 'opacity-100' : ''
+                }`}
               >
                 <MoreVertical size={12} />
               </div>
             )}
           </button>
           {isMenuOpen && (
-            <div ref={menuRef} className="absolute right-2 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
+            <div ref={menuRef} className="rfs-menu absolute right-2 top-full mt-1 z-50 min-w-[130px]">
               <button
                 onClick={() => startEditAquifer(a.id, a.name)}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 <Pencil size={12} />
                 <span>Rename</span>
               </button>
               <button
                 onClick={() => startDelete(`aquifer-${a.id}`)}
-                className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                className="rfs-opt danger"
               >
                 <Trash2 size={12} />
                 <span>Delete</span>
@@ -963,22 +978,21 @@ const Sidebar: React.FC<SidebarProps> = ({
       : regionAquifers.length > 0;
     const isExpanded = expandedRegionIds.has(r.id);
     const itemKey = `region-${r.id}`;
-    const isFocused = focusedItemKey === itemKey;
 
     const isDeletingThis = deletingKey === `region-${r.id}`;
     if (isConfirming || isDeletingThis) {
       return (
         <div key={r.id} data-item-key={itemKey}>
           <div className="px-2 py-1">
-            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs">
+            <div className="px-3 py-2 rounded-lg border text-xs bg-red-500/10 border-red-500/40">
               {isDeletingThis ? (
-                <p className="text-red-700 font-medium flex items-center gap-2">
+                <p className="text-[var(--danger-text)] font-medium flex items-center gap-2">
                   <Loader2 size={12} className="animate-spin" />
                   Deleting "{r.name}"…
                 </p>
               ) : (
                 <>
-                  <p className="text-red-700 font-medium mb-2">Delete "{r.name}" and all its data?</p>
+                  <p className="text-[var(--danger-text)] font-medium mb-2">Delete "{r.name}" and all its data?</p>
                   <div className="flex space-x-2">
                     <button
                       onClick={async () => {
@@ -996,7 +1010,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </button>
                     <button
                       onClick={() => setConfirmDelete(null)}
-                      className="px-3 py-1 bg-white text-slate-600 rounded text-xs font-medium border border-slate-200 hover:bg-slate-50"
+                      className="rfs-btn px-3 py-1 text-xs"
                     >
                       Cancel
                     </button>
@@ -1018,15 +1032,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               if (!visibleRegionIds.has(r.id)) onToggleRegionVisibility(r.id);
               handleRegionClick(r);
             }}
-            className={`w-full text-left px-2 py-1.5 text-xs transition-all flex items-center group ${
-              isFocused ? 'ring-2 ring-inset ring-blue-400' : ''
-            } ${
-              isSelected
-                ? 'bg-blue-600 text-white'
-                : visibleRegionIds.has(r.id)
-                  ? 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
-                  : 'text-slate-300 hover:bg-slate-50 hover:text-blue-600'
-            }`}
+            className={`rfs-row rfs-row-region group ${
+              isSelected ? 'sel' : ''
+            } ${visibleRegionIds.has(r.id) ? '' : 'opacity-40'}`}
           >
             {/* Chevron */}
             {hasChildren ? (
@@ -1035,9 +1043,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation();
                   handleRegionChevronClick(r.id);
                 }}
-                className={`w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors ${
-                  isSelected ? 'hover:bg-blue-500' : 'hover:bg-slate-200'
-                }`}
+                className="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors hover:bg-white/15"
               >
                 {isExpanded
                   ? <ChevronDown size={12} />
@@ -1046,47 +1052,47 @@ const Sidebar: React.FC<SidebarProps> = ({
             ) : (
               <div className="w-4 h-4 flex-shrink-0 mr-1" />
             )}
-            <MapPin size={12} className={`mr-2 flex-shrink-0 ${isSelected ? 'text-blue-200' : 'text-slate-300'}`} />
-            <span className="font-medium truncate flex-1">{r.name}</span>
+            <MapPin size={12} className="mr-2 flex-shrink-0 opacity-60" />
+            <span className="truncate flex-1">{r.name}</span>
             <div
               onClick={e => {
                 e.stopPropagation();
                 setMenuOpen(isMenuOpen ? null : `region-${r.id}`);
                 setConfirmDelete(null);
               }}
-              className={`p-0.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ${
-                isSelected ? 'hover:bg-blue-500' : 'hover:bg-slate-200'
-              } ${isMenuOpen ? 'opacity-100' : ''}`}
+              className={`p-0.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
+                isMenuOpen ? 'opacity-100' : ''
+              }`}
             >
               <MoreVertical size={12} />
             </div>
           </button>
           {isMenuOpen && (
-            <div ref={menuRef} className="absolute right-2 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
+            <div ref={menuRef} className="rfs-menu absolute right-2 top-full mt-1 z-50 min-w-[130px]">
               <button
                 onClick={() => startEditRegion(r.id, r)}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 <Pencil size={12} />
                 <span>Edit</span>
               </button>
               <button
                 onClick={() => { onToggleRegionVisibility(r.id); setMenuOpen(null); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 {visibleRegionIds.has(r.id) ? <EyeOff size={12} /> : <Eye size={12} />}
                 <span>{visibleRegionIds.has(r.id) ? 'Hide Region' : 'Show Region'}</span>
               </button>
               <button
                 onClick={() => { setMenuOpen(null); onDownloadRegion(r.id); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                className="rfs-opt"
               >
                 <Download size={12} />
                 <span>Download</span>
               </button>
               <button
                 onClick={() => startDelete(`region-${r.id}`)}
-                className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                className="rfs-opt danger"
               >
                 <Trash2 size={12} />
                 <span>Delete</span>
@@ -1109,35 +1115,42 @@ const Sidebar: React.FC<SidebarProps> = ({
     );
   };
 
+  // data-theme is what @geoglows/geoglows-auth keys its dark styling off, so the
+  // account menu opens in the panel's colors rather than white.
   return (
-    <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shadow-xl z-20">
-      <div className="p-6 border-b border-slate-100 flex items-center space-x-3 bg-gradient-to-br from-blue-600 to-indigo-700">
-        <Droplets className="text-white" size={28} />
-        <div>
-          <h1 className="text-lg font-bold text-white tracking-tight leading-none">Aquifer Analyst</h1>
-          <p className="text-blue-100 text-[10px] font-medium uppercase mt-1">Groundwater Intelligence</p>
+    <aside className="rfs-panel w-80 flex flex-col z-20" data-theme="dark">
+      <header className="rfs-head">
+        <div className="rfs-brand">
+          <a href={LOGO_HREF} title="GEOGLOWS apps">
+            {/* width/height are the file's native size, so the aspect ratio is
+                right before the image lands. */}
+            <img src={LOGO_SRC} alt={LOGO_ALT} width={354} height={60} />
+          </a>
+          {/* Filled by @geoglows/geoglows-auth — see services/geoglowsAuth.ts.
+              React never renders children here, so it leaves the slot alone. */}
+          <div id="auth-action" />
         </div>
-      </div>
+        <h1 className="rfs-title">Aquifer Analyst v1</h1>
+      </header>
+
+      <p className="rfs-eyebrow">Regions</p>
 
       <div
         ref={treeRef}
-        className="flex-1 overflow-y-auto py-2"
+        className="rfs-scroll flex-1 overflow-y-auto pb-2"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >
         {regions.map(r => renderRegionRow(r))}
         {regions.length === 0 && (
-          <p className="text-xs text-slate-400 italic px-3 py-2">No regions loaded.</p>
+          <p className="text-xs italic px-4 py-2 text-[var(--text-faint)]">No regions loaded.</p>
         )}
       </div>
 
-      <div className="p-4 bg-slate-50 border-t border-slate-100">
-        <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm text-center">
-          <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Status</p>
-          <div className="flex items-center justify-center space-x-2">
-            <span className="flex h-2 w-2 rounded-full bg-green-500"></span>
-            <span className="text-xs font-medium text-slate-600">Sync Active</span>
-          </div>
+      <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--surface2)]">
+        <div className="flex items-center justify-center gap-2">
+          <span className="flex h-1.5 w-1.5 rounded-full bg-[var(--check)]"></span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-faint)]">Sync Active</span>
         </div>
       </div>
 
