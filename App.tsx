@@ -1113,8 +1113,8 @@ const App: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative overflow-hidden">
         {/* Top Navigation / Breadcrumbs */}
-        <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-10">
-          <div className="flex items-center space-x-2 text-sm text-slate-600">
+        <header className="bg-[var(--surface2)] border-b border-[var(--border)] px-6 py-3 flex items-center justify-between z-10">
+          <div className="flex items-center space-x-2 text-sm text-[var(--text-dim)]">
             <MapIcon size={16} />
             <button
               onClick={() => {
@@ -1122,13 +1122,13 @@ const App: React.FC = () => {
                 setSelectedAquifer(null);
                 setSelectedWells([]);
               }}
-              className="font-semibold text-slate-800 hover:text-blue-600 transition-colors"
+              className="font-semibold text-[var(--text)] hover:text-[var(--accent)] transition-colors"
             >
               Home
             </button>
             {selectedRegion && (
               <>
-                <ChevronRight size={14} className="text-slate-400" />
+                <ChevronRight size={14} className="text-[var(--text-faint)]" />
                 <button
                   onClick={() => {
                     if (selectedRegion.singleUnit) {
@@ -1139,7 +1139,7 @@ const App: React.FC = () => {
                       setSelectedWells([]);
                     }
                   }}
-                  className="hover:text-blue-600 transition-colors"
+                  className="hover:text-[var(--accent)] transition-colors"
                 >
                   {selectedRegion.name}
                 </button>
@@ -1147,10 +1147,10 @@ const App: React.FC = () => {
             )}
             {selectedAquifer && !selectedRegion?.singleUnit && (
               <>
-                <ChevronRight size={14} className="text-slate-400" />
+                <ChevronRight size={14} className="text-[var(--text-faint)]" />
                 <button
                   onClick={() => setSelectedWells([])}
-                  className="hover:text-blue-600 transition-colors"
+                  className="hover:text-[var(--accent)] transition-colors"
                 >
                   {selectedAquifer.name}
                 </button>
@@ -1158,8 +1158,8 @@ const App: React.FC = () => {
             )}
             {selectedWells.length > 0 && (
               <>
-                <ChevronRight size={14} className="text-slate-400" />
-                <span className="font-medium text-blue-600">
+                <ChevronRight size={14} className="text-[var(--text-faint)]" />
+                <span className="font-medium text-[var(--accent)]">
                   {selectedWells[0].name}
                   {selectedWells.length > 1 && ` + ${selectedWells.length - 1} more`}
                 </span>
@@ -1182,7 +1182,7 @@ const App: React.FC = () => {
                     setSelectedModel(null);
                   }
                 }}
-                className="px-2 py-1.5 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="rfs-field px-2 py-1.5 text-sm"
               >
                 {selectedRegion!.effectiveDataTypes.map(dt => (
                   <option key={dt.code} value={dt.code}>{dt.name} ({dt.unit})</option>
@@ -1193,28 +1193,24 @@ const App: React.FC = () => {
               <>
                 <button
                   onClick={analyzeTrends}
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    showTrends
-                      ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                  }`}
+                  className={`rfs-btn ${showTrends ? 'active' : ''}`}
                 >
-                  <Activity size={16} />
+                  <Activity size={16} className={showTrends ? '' : 'text-[#60a5fa]'} />
                   <span>Analyze Trends</span>
                 </button>
                 {showTrends && (
-                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--text-dim)]">
                     <span className="whitespace-nowrap">Window:</span>
                     <button
                       onClick={() => handleTrendWindowChange(Math.max(5, trendWindowYears - 5))}
                       disabled={trendWindowYears <= 5}
-                      className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-slate-600"
+                      className="w-5 h-5 flex items-center justify-center rounded font-bold bg-[var(--bg)] text-[var(--text-dim)] hover:bg-[var(--border)] disabled:opacity-30 disabled:cursor-not-allowed"
                     >&minus;</button>
                     <span className="w-12 text-center font-medium">{trendWindowYears} yr</span>
                     <button
                       onClick={() => handleTrendWindowChange(Math.min(trendWindowMax, trendWindowYears + 5))}
                       disabled={trendWindowYears >= trendWindowMax}
-                      className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-slate-600"
+                      className="w-5 h-5 flex items-center justify-center rounded font-bold bg-[var(--bg)] text-[var(--text-dim)] hover:bg-[var(--border)] disabled:opacity-30 disabled:cursor-not-allowed"
                     >+</button>
                   </div>
                 )}
@@ -1223,26 +1219,26 @@ const App: React.FC = () => {
             {selectedAquifer && (
               <button
                 onClick={() => setRasterDialogOpen(true)}
-                className="flex items-center space-x-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-md text-sm font-medium hover:bg-emerald-100 transition-colors"
+                className="rfs-btn"
               >
-                <BarChart3 size={16} />
+                <BarChart3 size={16} className="text-[#34d399]" />
                 <span>Spatial Analysis</span>
               </button>
             )}
             {selectedAquifer && selectedDataType === 'wte' && (
               <button
                 onClick={handleOpenImputationWizard}
-                className="flex items-center space-x-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-md text-sm font-medium hover:bg-amber-100 transition-colors"
+                className="rfs-btn"
               >
-                <Activity size={16} />
+                <Activity size={16} className="text-[#fbbf24]" />
                 <span>Impute Gaps</span>
               </button>
             )}
             <button
               onClick={() => setIsDataManagerOpen(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-colors"
+              className="rfs-btn"
             >
-              <Database size={16} />
+              <Database size={16} className="text-[#60a5fa]" />
               <span>Manage Data</span>
             </button>
           </div>
