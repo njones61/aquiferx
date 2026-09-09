@@ -73,6 +73,7 @@
   --check: #22c55e;
   --danger: #ef4444;
   --danger-text: #fca5a5;
+  --warn-text: #fcd34d;
 
   /* One hue per level of the tree, far enough apart to tell at 11px on a dark
      ground. The model moved off amber when the aquifer took yellow — two
@@ -381,4 +382,152 @@
   font-size: 14px;
   padding: 8px 10px;
   white-space: nowrap;
+}
+
+/* ── Map overlay surfaces ─────────────────────────────────────────────────
+   Cards floating over tiles — the legends, the well search, the map options,
+   the animation player. RFS's `.card`: a surface, a border, and a shadow deep
+   enough to hold its edge against imagery. */
+.rfs-card {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+/* A number or text field on one of those cards. Neutral until touched, then
+   accent — the same two states RFS gives every input. */
+.rfs-field {
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  outline: none;
+}
+
+.rfs-field:hover:not(:disabled),
+.rfs-field:focus {
+  border-color: var(--accent);
+}
+
+.rfs-field:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rfs-field::placeholder {
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+/* Native controls follow the accent rather than the browser's blue. */
+.rfs-check,
+.rfs-range {
+  accent-color: var(--accent);
+}
+
+/* A button that is as wide as its label rather than a 44px square — the
+   legend's actions, and anything else sitting inline on a card. */
+.rfs-btn.auto {
+  width: auto;
+  height: auto;
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+/* Toggle states. Outline only: a filled button at this size, floating over a
+   map, reads as a warning rather than as "on". */
+.rfs-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.rfs-btn.on-success {
+  color: var(--check);
+  border-color: var(--check);
+}
+
+.rfs-btn.on-danger {
+  color: var(--danger-text);
+  border-color: var(--danger);
+}
+
+/* Hover must not walk back a state the button is already showing. */
+.rfs-btn.on-success:hover:not(:disabled) {
+  color: var(--check);
+  border-color: var(--check);
+}
+
+.rfs-btn.on-danger:hover:not(:disabled) {
+  color: var(--danger-text);
+  border-color: var(--danger);
+}
+
+/* ── Leaflet's own chrome ─────────────────────────────────────────────────
+   The zoom buttons, the attribution strip and the well tooltips are DOM the
+   library builds itself, so they keep their white defaults unless overridden
+   here. Sized as Leaflet ships them; only the palette changes. */
+.leaflet-bar {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  color: var(--text-dim);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.leaflet-bar a:hover {
+  color: var(--accent);
+  background: var(--surface2);
+}
+
+/* Leaflet greys out a zoom button at the end of its range; without this it
+   reverts to the light default at exactly the moment it draws attention. */
+.leaflet-bar a.leaflet-disabled,
+.leaflet-bar a.leaflet-disabled:hover {
+  color: var(--text-faint);
+  background: var(--surface);
+  opacity: 0.4;
+}
+
+.leaflet-control-attribution {
+  color: var(--text-faint);
+  background: rgba(17, 24, 39, 0.85);
+}
+
+.leaflet-control-attribution a {
+  color: var(--accent);
+}
+
+/* The well tooltip — name, id, GSE, observation count. Leaflet draws the arrow
+   as a rotated square, so its background has to be set separately from the
+   body's or the two disagree at the seam. */
+.leaflet-tooltip {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+.leaflet-tooltip-top::before {
+  border-top-color: var(--border);
+}
+
+.leaflet-tooltip-bottom::before {
+  border-bottom-color: var(--border);
+}
+
+.leaflet-tooltip-left::before {
+  border-left-color: var(--border);
+}
+
+.leaflet-tooltip-right::before {
+  border-right-color: var(--border);
 }

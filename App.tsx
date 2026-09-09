@@ -1290,32 +1290,32 @@ const App: React.FC = () => {
             />
             {/* Well legend — shown when aquifer selected, wells visible, and trends not active */}
             {selectedAquifer && showWellsOnMap && !(showTrends && (trendColors || aquiferTrendColors)) && (
-              <div className="absolute top-20 left-2 z-[90] bg-white rounded-lg shadow-lg border border-slate-200 p-3" style={{ width: '180px' }}>
-                <div className="text-xs font-semibold text-slate-700 mb-2">Wells</div>
+              <div className="rfs-card absolute top-20 left-2 z-[90] p-3" style={{ width: '180px' }}>
+                <div className="text-xs font-semibold text-[var(--text)] mb-2">Wells</div>
                 {wellTimeRanges ? (
                   <>
                     <div className="flex items-center gap-2 py-0.5">
                       <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: '#22c55e' }} />
-                      <span className="text-xs text-slate-600">Active (has data)</span>
+                      <span className="text-xs text-[var(--text-dim)]">Active (has data)</span>
                     </div>
                     <div className="flex items-center gap-2 py-0.5">
                       <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: '#4b5563' }} />
-                      <span className="text-xs text-slate-600">Inactive</span>
+                      <span className="text-xs text-[var(--text-dim)]">Inactive</span>
                     </div>
                   </>
                 ) : (
                   <>
                     <div className="flex items-center gap-2 py-0.5">
                       <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: '#3b82f6' }} />
-                      <span className="text-xs text-slate-600">2+ observations</span>
+                      <span className="text-xs text-[var(--text-dim)]">2+ observations</span>
                     </div>
                     <div className="flex items-center gap-2 py-0.5">
                       <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: '#6b7280' }} />
-                      <span className="text-xs text-slate-600">1 observation</span>
+                      <span className="text-xs text-[var(--text-dim)]">1 observation</span>
                     </div>
                     <div className="flex items-center gap-2 py-0.5">
                       <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: '#ef4444' }} />
-                      <span className="text-xs text-slate-600">No data</span>
+                      <span className="text-xs text-[var(--text-dim)]">No data</span>
                     </div>
                   </>
                 )}
@@ -1330,11 +1330,11 @@ const App: React.FC = () => {
                 ? (unit === 'm' ? AQUIFER_TREND_THRESHOLDS_M : AQUIFER_TREND_THRESHOLDS_FT)
                 : (unit === 'm' ? TREND_THRESHOLDS_M : TREND_THRESHOLDS_FT);
               return (
-                <div className="absolute top-20 left-2 z-[90] bg-white rounded-lg shadow-lg border border-slate-200 p-3" style={{ width: '210px' }}>
-                  <div className="text-xs font-semibold text-slate-700 mb-0.5">
+                <div className="rfs-card absolute top-20 left-2 z-[90] p-3" style={{ width: '210px' }}>
+                  <div className="text-xs font-semibold text-[var(--text)] mb-0.5">
                     {isAquiferMode ? 'Aquifer Trend (median)' : 'Well Trend'} ({unit}/yr)
                   </div>
-                  <div className="text-[10px] text-slate-400 mb-2">
+                  <div className="text-[10px] text-[var(--text-faint)] mb-2">
                     {thresholds.moderate} / {thresholds.extreme} {unit}/yr
                   </div>
                   {[...TREND_CATEGORIES].reverse().map(cat => {
@@ -1342,7 +1342,7 @@ const App: React.FC = () => {
                     return (
                       <div key={cat.label} className="flex items-center gap-2 py-0.5">
                         <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                        <span className="text-xs text-slate-600">{cat.label} ({count})</span>
+                        <span className="text-xs text-[var(--text-dim)]">{cat.label} ({count})</span>
                       </div>
                     );
                   })}

@@ -723,40 +723,41 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
   return (
     <>
       {/* Animation Controls */}
-      <div className="absolute left-1/2 -translate-x-1/2 z-[95] bg-white/95 backdrop-blur rounded-lg shadow-lg border border-slate-200 px-4 py-2 flex items-center gap-3"
+      <div className="rfs-card absolute left-1/2 -translate-x-1/2 z-[95] px-4 py-2 flex items-center gap-3"
         style={{ bottom: '8px' }}>
-        <span className="text-xs font-medium text-slate-600 mr-1">{analysis.title}</span>
+        <span className="text-xs font-medium text-[var(--text-dim)] mr-1">{analysis.title}</span>
 
         <button onClick={() => setPlaying(!playing)}
-          className="p-1.5 rounded-md hover:bg-slate-100 transition-colors">
-          {playing ? <Pause size={16} className="text-slate-700" /> : <Play size={16} className="text-slate-700" />}
+          className="p-1.5 rounded-md transition-colors text-[var(--text-dim)] hover:bg-[var(--surface2)] hover:text-[var(--accent)]">
+          {playing ? <Pause size={16} /> : <Play size={16} />}
         </button>
 
         <input type="range" min={0} max={frames.length - 1} value={frameIdx}
           onChange={e => { setFrameIdx(parseInt(e.target.value)); setPlaying(false); }}
-          className="w-48 h-1.5 accent-emerald-500" />
+          className="rfs-range w-48 h-1.5" />
 
-        <span className="text-xs font-medium text-slate-700 min-w-[80px]">{currentDate}</span>
+        {/* tabular-nums so the row doesn't twitch as the date ticks */}
+        <span className="text-xs font-medium text-[var(--text)] min-w-[80px] tabular-nums">{currentDate}</span>
 
         {frameHasData[frameIdx] === false && (
-          <span className="text-[11px] font-semibold text-amber-600 whitespace-nowrap">No well data for this date</span>
+          <span className="text-[11px] font-semibold text-[var(--warn-text)] whitespace-nowrap">No well data for this date</span>
         )}
 
         <button onClick={onClose}
-          className="p-1 hover:bg-slate-100 rounded transition-colors ml-2">
-          <X size={14} className="text-slate-400" />
+          className="p-1 rounded transition-colors ml-2 text-[var(--text-faint)] hover:bg-[var(--surface2)] hover:text-[var(--text)]">
+          <X size={14} />
         </button>
       </div>
 
       {/* Color legend + Cross Section button — top-right, below basemap selector */}
       <div className="absolute top-14 right-3 z-[95] flex flex-col items-end gap-2">
-        <div className="bg-white/95 backdrop-blur rounded-lg shadow-lg border border-slate-200 p-3">
+        <div className="rfs-card p-3">
           <button
             onClick={() => setShowRampPicker(!showRampPicker)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-2 hover:text-slate-900 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold mb-2 transition-colors text-[var(--text-dim)] hover:text-[var(--accent)]"
           >
             <span>{dataTypeName || analysis.dataType.toUpperCase()}</span>
-            <ChevronDown size={12} className={`text-slate-400 transition-transform ${showRampPicker ? 'rotate-180' : ''}`} />
+            <ChevronDown size={12} className={`transition-transform ${showRampPicker ? 'rotate-180' : ''}`} />
           </button>
 
           {showRampPicker && (
@@ -765,17 +766,13 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
                 <button
                   key={ramp.id}
                   onClick={() => { setSelectedRamp(ramp.id); setShowRampPicker(false); }}
-                  className={`w-full flex items-center gap-2 px-1.5 py-1 rounded text-left transition-colors ${
-                    ramp.id === selectedRamp
-                      ? 'bg-slate-100 ring-1 ring-slate-300'
-                      : 'hover:bg-slate-50'
-                  }`}
+                  className={`rfs-opt gap-2 px-1.5 py-1 ${ramp.id === selectedRamp ? 'active' : ''}`}
                 >
                   <div
-                    className="h-3 flex-1 rounded-sm border border-slate-200"
+                    className="h-3 flex-1 rounded-sm border border-[var(--border)]"
                     style={{ background: rampGradientCSS(ramp.lut) }}
                   />
-                  <span className="text-[10px] text-slate-600 w-[42px] text-right flex-shrink-0">{ramp.name}</span>
+                  <span className="text-[10px] w-[42px] text-right flex-shrink-0">{ramp.name}</span>
                 </button>
               ))}
             </div>
@@ -783,12 +780,12 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
 
           <div className="flex items-stretch gap-2">
             <div
-              className="w-5 rounded-sm border border-slate-200"
+              className="w-5 rounded-sm border border-[var(--border)]"
               style={{ height: '120px', background: verticalGradientCSS }}
             />
             <div className="flex flex-col justify-between" style={{ height: '120px' }}>
               {legendLabels.map((val, i) => (
-                <span key={i} className="text-[11px] text-slate-600 leading-none">{val.toFixed(0)}</span>
+                <span key={i} className="text-[11px] text-[var(--text-dim)] leading-none tabular-nums">{val.toFixed(0)}</span>
               ))}
             </div>
           </div>
@@ -804,12 +801,8 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
               setCrossSectionEnd(null);
             }
           }}
-          className={`px-3 py-1.5 rounded-lg shadow-lg border text-xs font-medium transition-colors ${
-            hasCrossSection
-              ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-              : crossSectionMode
-                ? 'bg-blue-100 text-blue-800 border-blue-300'
-                : 'bg-white/95 backdrop-blur text-slate-700 border-slate-200 hover:bg-slate-50'
+          className={`rfs-btn auto shadow-lg ${
+            hasCrossSection ? 'on-danger' : crossSectionMode ? 'active' : ''
           }`}
         >
           {hasCrossSection ? 'Clear' : 'Cross Section'}
@@ -817,11 +810,7 @@ const RasterOverlay: React.FC<RasterOverlayProps> = ({
 
         <button
           onClick={onToggleActiveWells}
-          className={`px-3 py-1.5 rounded-lg shadow-lg border text-xs font-medium transition-colors ${
-            showActiveWells
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-              : 'bg-white/95 backdrop-blur text-slate-700 border-slate-200 hover:bg-slate-50'
-          }`}
+          className={`rfs-btn auto shadow-lg ${showActiveWells ? 'on-success' : ''}`}
         >
           Active Wells
         </button>

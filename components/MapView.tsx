@@ -831,7 +831,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       {selectedAquifer && (
         <div className="absolute top-3 left-14 z-[90]" style={{ width: '260px' }}>
           <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-faint)] pointer-events-none" />
             <input
               ref={searchInputRef}
               type="text"
@@ -857,24 +857,24 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
                   selectSearchedWell(wellSearchMatches[idx]);
                 }
               }}
-              className="w-full pl-8 pr-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+              className="rfs-field w-full pl-8 pr-3 py-1.5 text-sm shadow-md"
             />
           </div>
           {wellSearchFocused && wellSearchQuery.trim() && (
-            <div ref={searchDropdownRef} className="mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+            <div ref={searchDropdownRef} className="rfs-card rfs-scroll mt-1 overflow-hidden max-h-64 overflow-y-auto">
               {wellSearchMatches.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-slate-400">No matching wells</div>
+                <div className="px-3 py-2 text-xs text-[var(--text-faint)]">No matching wells</div>
               ) : (
                 wellSearchMatches.map((w, i) => (
                   <button
                     key={w.id}
                     onMouseDown={(e) => { e.preventDefault(); selectSearchedWell(w); }}
-                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 flex flex-col ${
-                      i === wellSearchHighlight ? 'bg-blue-50' : ''
+                    className={`w-full text-left px-3 py-1.5 text-sm flex flex-col hover:bg-[var(--surface2)] ${
+                      i === wellSearchHighlight ? 'bg-[var(--surface2)]' : ''
                     }`}
                   >
-                    <span className="font-medium text-slate-800 truncate">{w.name}</span>
-                    <span className="text-xs text-slate-400 truncate">ID: {w.id}</span>
+                    <span className="font-medium text-[var(--text)] truncate">{w.name}</span>
+                    <span className="text-xs text-[var(--text-faint)] truncate">ID: {w.id}</span>
                   </button>
                 ))
               )}
@@ -884,10 +884,10 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       )}
 
       {/* Map Options Panel */}
-      <div className="absolute bottom-2 left-2 z-[90] flex flex-col gap-1.5 bg-white rounded-lg shadow-lg border border-slate-200 px-2 py-1.5">
+      <div className="rfs-card absolute bottom-2 left-2 z-[90] flex flex-col gap-1.5 px-2 py-1.5">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <label htmlFor="min-obs" className="text-xs font-medium text-slate-600 whitespace-nowrap">Min obs</label>
+            <label htmlFor="min-obs" className="text-xs font-medium text-[var(--text-dim)] whitespace-nowrap">Min obs</label>
             <input
               id="min-obs"
               type="number"
@@ -895,11 +895,11 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
               step={1}
               value={minObs}
               onChange={(e) => setMinObs(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-14 text-xs text-center border border-slate-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              className="rfs-field w-14 text-xs text-center px-1 py-0.5"
             />
           </div>
           <div className="flex items-center gap-1">
-            <label htmlFor="label-font" className="text-xs font-medium text-slate-600 whitespace-nowrap">Font</label>
+            <label htmlFor="label-font" className="text-xs font-medium text-[var(--text-dim)] whitespace-nowrap">Font</label>
             <input
               id="label-font"
               type="number"
@@ -908,14 +908,14 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
               step={1}
               value={labelFontSize}
               onChange={(e) => setLabelFontSize(Math.max(6, Math.min(24, parseInt(e.target.value) || 9)))}
-              className="w-12 text-xs text-center border border-slate-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              className="rfs-field w-12 text-xs text-center px-1 py-0.5"
             />
           </div>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={filterDatesEnabled} onChange={(e) => setFilterDatesEnabled(e.target.checked)} className="w-3 h-3" />
-            <span className="text-xs font-medium text-slate-600 whitespace-nowrap">Filter dates:</span>
+            <input type="checkbox" checked={filterDatesEnabled} onChange={(e) => setFilterDatesEnabled(e.target.checked)} className="rfs-check w-3 h-3" />
+            <span className="text-xs font-medium text-[var(--text-dim)] whitespace-nowrap">Filter dates:</span>
           </label>
           <input
             type="number"
@@ -926,9 +926,9 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
             value={filterMinYear}
             onChange={(e) => setFilterMinYear(e.target.value)}
             disabled={!filterDatesEnabled}
-            className="w-14 text-xs text-center border border-slate-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40"
+            className="rfs-field w-14 text-xs text-center px-1 py-0.5"
           />
-          <span className="text-xs text-slate-400">–</span>
+          <span className="text-xs text-[var(--text-faint)]">–</span>
           <input
             type="number"
             min={1800}
@@ -938,31 +938,31 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
             value={filterMaxYear}
             onChange={(e) => setFilterMaxYear(e.target.value)}
             disabled={!filterDatesEnabled}
-            className="w-14 text-xs text-center border border-slate-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40"
+            className="rfs-field w-14 text-xs text-center px-1 py-0.5"
           />
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showAquiferNames} onChange={(e) => setShowAquiferNames(e.target.checked)} className="w-3 h-3" />
-            <span className="text-xs text-slate-600">Aquifer names</span>
+            <input type="checkbox" checked={showAquiferNames} onChange={(e) => setShowAquiferNames(e.target.checked)} className="rfs-check w-3 h-3" />
+            <span className="text-xs text-[var(--text-dim)]">Aquifer names</span>
           </label>
           <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showAquiferIds} onChange={(e) => setShowAquiferIds(e.target.checked)} className="w-3 h-3" />
-            <span className="text-xs text-slate-600">Aquifer IDs</span>
+            <input type="checkbox" checked={showAquiferIds} onChange={(e) => setShowAquiferIds(e.target.checked)} className="rfs-check w-3 h-3" />
+            <span className="text-xs text-[var(--text-dim)]">Aquifer IDs</span>
           </label>
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showWells} onChange={(e) => setShowWells(e.target.checked)} className="w-3 h-3" />
-            <span className="text-xs text-slate-600">Wells</span>
+            <input type="checkbox" checked={showWells} onChange={(e) => setShowWells(e.target.checked)} className="rfs-check w-3 h-3" />
+            <span className="text-xs text-[var(--text-dim)]">Wells</span>
           </label>
           <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showWellNames} onChange={(e) => setShowWellNames(e.target.checked)} className="w-3 h-3" />
-            <span className="text-xs text-slate-600">Well names</span>
+            <input type="checkbox" checked={showWellNames} onChange={(e) => setShowWellNames(e.target.checked)} className="rfs-check w-3 h-3" />
+            <span className="text-xs text-[var(--text-dim)]">Well names</span>
           </label>
           <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showWellIds} onChange={(e) => setShowWellIds(e.target.checked)} className="w-3 h-3" />
-            <span className="text-xs text-slate-600">Well IDs</span>
+            <input type="checkbox" checked={showWellIds} onChange={(e) => setShowWellIds(e.target.checked)} className="rfs-check w-3 h-3" />
+            <span className="text-xs text-[var(--text-dim)]">Well IDs</span>
           </label>
         </div>
       </div>
