@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Layers, Map as MapIcon, Database, ChevronRight, Activity, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
+import { Layers, Map as MapIcon, Database, ChevronRight, Activity, Wand2, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
 import { Region, Aquifer, Well, Measurement, DataType, RasterAnalysisResult, RasterAnalysisMeta, CrossSectionProfile, ImputationModelResult, ImputationModelMeta } from './types';
 import { loadAllData } from './services/dataLoader';
 import { freshFetch, toCsv, escapeCsvField, WELLS_CSV_HEADERS } from './services/importUtils';
@@ -1114,21 +1114,21 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col relative overflow-hidden">
         {/* Top Navigation / Breadcrumbs */}
         <header className="bg-[var(--surface2)] border-b border-[var(--border)] px-6 py-3 flex items-center justify-between z-10">
-          <div className="flex items-center space-x-2 text-sm text-[var(--text-dim)]">
-            <MapIcon size={16} />
+          <div className="flex items-center space-x-2 text-sm text-[var(--text-dim)] flex-1 min-w-0">
+            <MapIcon size={16} className="flex-shrink-0" />
             <button
               onClick={() => {
                 setSelectedRegion(null);
                 setSelectedAquifer(null);
                 setSelectedWells([]);
               }}
-              className="font-semibold text-[var(--text)] hover:text-[var(--accent)] transition-colors"
+              className="font-semibold text-[var(--text)] hover:text-[var(--accent)] transition-colors flex-shrink-0"
             >
               Home
             </button>
             {selectedRegion && (
               <>
-                <ChevronRight size={14} className="text-[var(--text-faint)]" />
+                <ChevronRight size={14} className="text-[var(--text-faint)] flex-shrink-0" />
                 <button
                   onClick={() => {
                     if (selectedRegion.singleUnit) {
@@ -1139,7 +1139,8 @@ const App: React.FC = () => {
                       setSelectedWells([]);
                     }
                   }}
-                  className="hover:text-[var(--accent)] transition-colors"
+                  className="hover:text-[var(--accent)] transition-colors truncate min-w-0"
+                  title={selectedRegion.name}
                 >
                   {selectedRegion.name}
                 </button>
@@ -1147,10 +1148,11 @@ const App: React.FC = () => {
             )}
             {selectedAquifer && !selectedRegion?.singleUnit && (
               <>
-                <ChevronRight size={14} className="text-[var(--text-faint)]" />
+                <ChevronRight size={14} className="text-[var(--text-faint)] flex-shrink-0" />
                 <button
                   onClick={() => setSelectedWells([])}
-                  className="hover:text-[var(--accent)] transition-colors"
+                  className="hover:text-[var(--accent)] transition-colors truncate min-w-0"
+                  title={selectedAquifer.name}
                 >
                   {selectedAquifer.name}
                 </button>
@@ -1158,15 +1160,18 @@ const App: React.FC = () => {
             )}
             {selectedWells.length > 0 && (
               <>
-                <ChevronRight size={14} className="text-[var(--text-faint)]" />
-                <span className="font-medium text-[var(--accent)]">
+                <ChevronRight size={14} className="text-[var(--text-faint)] flex-shrink-0" />
+                <span
+                  className="font-medium text-[var(--accent)] truncate min-w-0 max-w-[50%]"
+                  title={selectedWells.map(w => w.name).join(', ')}
+                >
                   {selectedWells[0].name}
                   {selectedWells.length > 1 && ` + ${selectedWells.length - 1} more`}
                 </span>
               </>
             )}
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
             {hasMultipleDataTypes && (
               <select
                 value={selectedDataType}
@@ -1193,10 +1198,12 @@ const App: React.FC = () => {
               <>
                 <button
                   onClick={analyzeTrends}
-                  className={`rfs-btn ${showTrends ? 'active' : ''}`}
+                  className={`rfs-btn icon ${showTrends ? 'active' : ''}`}
+                  title="Analyze Trends"
+                  aria-label="Analyze Trends"
+                  aria-pressed={showTrends}
                 >
-                  <Activity size={16} className={showTrends ? '' : 'text-[#60a5fa]'} />
-                  <span>Analyze Trends</span>
+                  <Activity size={20} className={showTrends ? '' : 'text-[#60a5fa]'} />
                 </button>
                 {showTrends && (
                   <div className="flex items-center gap-1.5 text-xs text-[var(--text-dim)]">
@@ -1219,27 +1226,30 @@ const App: React.FC = () => {
             {selectedAquifer && (
               <button
                 onClick={() => setRasterDialogOpen(true)}
-                className="rfs-btn"
+                className="rfs-btn icon"
+                title="Spatial Analysis"
+                aria-label="Spatial Analysis"
               >
-                <BarChart3 size={16} className="text-[#34d399]" />
-                <span>Spatial Analysis</span>
+                <BarChart3 size={20} className="text-[#34d399]" />
               </button>
             )}
             {selectedAquifer && selectedDataType === 'wte' && (
               <button
                 onClick={handleOpenImputationWizard}
-                className="rfs-btn"
+                className="rfs-btn icon"
+                title="Impute Gaps"
+                aria-label="Impute Gaps"
               >
-                <Activity size={16} className="text-[#fbbf24]" />
-                <span>Impute Gaps</span>
+                <Wand2 size={20} className="text-[#fbbf24]" />
               </button>
             )}
             <button
               onClick={() => setIsDataManagerOpen(true)}
-              className="rfs-btn"
+              className="rfs-btn icon"
+              title="Manage Data"
+              aria-label="Manage Data"
             >
-              <Database size={16} className="text-[#60a5fa]" />
-              <span>Manage Data</span>
+              <Database size={20} className="text-[#60a5fa]" />
             </button>
           </div>
         </header>
