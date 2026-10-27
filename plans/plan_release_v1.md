@@ -5,6 +5,12 @@ training.geoglows.org written after the code settles. Storage stays simple: the 
 and a downloaded zip is the backup they restore from. The BYOS / Supabase plans in `plan_data_mgmt.md` and
 `user_and_data_strategy.md` are deferred past this release.
 
+## Decisions (2026-10-27)
+
+- Sample Data: Utah, Oregon, Arizona (about 97 MB, fetched per region on demand).
+- My Data persists in IndexedDB between visits; the zip is the backup.
+- Order: storage first (Phases 1–2), then theme and layout, then import cleanup.
+
 ## Current state that drives the work
 
 - Every read and write goes through dev-server middleware in `vite.config.ts` (`/api/regions`, `/api/save-data`,
