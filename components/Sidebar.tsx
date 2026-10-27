@@ -1,7 +1,9 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Region, Aquifer, RasterAnalysisMeta, ImputationModelMeta } from '../types';
-import { MapPin, Droplets, MoreVertical, Pencil, Trash2, Download, Layers, Loader2, Info, Check, X as XIcon, ChevronRight, ChevronDown, Activity, Eye, EyeOff } from 'lucide-react';
+import { MapPin, Droplets, MoreVertical, Pencil, Trash2, Download, Layers, Loader2, Info, Check, X as XIcon, ChevronRight, ChevronDown, Activity, Eye, EyeOff, Copy, Plus, Upload } from 'lucide-react';
+import type { DataSource } from '../services/dataStore';
+import BackupBar from './BackupBar';
 import { mountGeoglowsAuth, unmountGeoglowsAuth } from '../services/geoglowsAuth';
 
 // The GEOGLOWS wordmark and where it links. Env-driven so a fork can point the
@@ -42,6 +44,13 @@ interface SidebarProps {
   onDeleteModel: (meta: ImputationModelMeta) => void;
   onRenameModel?: (meta: ImputationModelMeta, newTitle: string) => void;
   onGetModelInfo?: (meta: ImputationModelMeta) => void;
+  /** Which set the tree shows; `regions` is already filtered to it. */
+  dataView: DataSource;
+  onDataViewChange: (view: DataSource) => void;
+  hasMyData: boolean;
+  onCopyToMyData: (regionId: string) => void;
+  onAddData: () => void;
+  onDataChanged: () => void;
 }
 
 // Globally unique identity for raster/model entries. Codes alone collide
@@ -93,7 +102,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   onDeleteModel,
   onRenameModel,
   onGetModelInfo,
+  dataView,
+  onDataViewChange,
+  hasMyData,
+  onCopyToMyData,
+  onAddData,
+  onDataChanged,
 }) => {
+  // Sample Data ships with the app; nothing in it can be renamed or deleted
+  const readOnly = dataView === 'sample';
   // --- State ---
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -625,7 +642,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
         {isRasterMenuOpen && (
           <div ref={menuRef} className="rfs-menu absolute right-1 top-full mt-0.5 z-50 min-w-[110px]">
-            {onRenameRaster && (
+            {onRenameRaster && !readOnly && (
               <button
                 onClick={() => {
                   setMenuOpen(null);
@@ -647,13 +664,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span>Get Info</span>
               </button>
             )}
-            <button
-              onClick={() => { setMenuOpen(null); setConfirmDelete(rasterMenuKey); }}
-              className="rfs-opt danger"
-            >
-              <Trash2 size={11} />
-              <span>Delete</span>
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => { setMenuOpen(null); setConfirmDelete(rasterMenuKey); }}
+                className="rfs-opt danger"
+              >
+                <Trash2 size={11} />
+                <span>Delete</span>
+              </button>
+            )}
           </div>
         )}
         {/* Hover metadata tooltip */}
@@ -789,7 +808,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
         {isModelMenuOpen && (
           <div ref={menuRef} className="rfs-menu absolute right-1 top-full mt-0.5 z-50 min-w-[110px]">
-            {onRenameModel && (
+            {onRenameModel && !readOnly && (
               <button
                 onClick={() => {
                   setMenuOpen(null);
@@ -811,13 +830,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span>Get Info</span>
               </button>
             )}
-            <button
-              onClick={() => { setMenuOpen(null); setConfirmDelete(modelMenuKey); }}
-              className="rfs-opt danger"
-            >
-              <Trash2 size={11} />
-              <span>Delete</span>
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => { setMenuOpen(null); setConfirmDelete(modelMenuKey); }}
+                className="rfs-opt danger"
+              >
+                <Trash2 size={11} />
+                <span>Delete</span>
+              </button>
+            )}
           </div>
         )}
         {/* Hover metadata tooltip */}
@@ -921,7 +942,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="truncate block">{a.name}</span>
               )}
             </div>
-            {!isEditing && (
+            {!isEditing && !readOnly && (
               <div
                 onClick={e => {
                   e.stopPropagation();
@@ -1069,13 +1090,23 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           {isMenuOpen && (
             <div ref={menuRef} className="rfs-menu absolute right-2 top-full mt-1 z-50 min-w-[130px]">
-              <button
-                onClick={() => startEditRegion(r.id, r)}
-                className="rfs-opt"
-              >
-                <Pencil size={12} />
-                <span>Edit</span>
-              </button>
+              {readOnly ? (
+                <button
+                  onClick={() => { setMenuOpen(null); onCopyToMyData(r.id); }}
+                  className="rfs-opt"
+                >
+                  <Copy size={12} />
+                  <span>Copy to My Data</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => startEditRegion(r.id, r)}
+                  className="rfs-opt"
+                >
+                  <Pencil size={12} />
+                  <span>Edit</span>
+                </button>
+              )}
               <button
                 onClick={() => { onToggleRegionVisibility(r.id); setMenuOpen(null); }}
                 className="rfs-opt"
@@ -1090,13 +1121,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <Download size={12} />
                 <span>Download</span>
               </button>
-              <button
-                onClick={() => startDelete(`region-${r.id}`)}
-                className="rfs-opt danger"
-              >
-                <Trash2 size={12} />
-                <span>Delete</span>
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => startDelete(`region-${r.id}`)}
+                  className="rfs-opt danger"
+                >
+                  <Trash2 size={12} />
+                  <span>Delete</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1130,8 +1163,24 @@ const Sidebar: React.FC<SidebarProps> = ({
               React never renders children here, so it leaves the slot alone. */}
           <div id="auth-action" />
         </div>
-        <h1 className="rfs-title">Aquifer Analyst v1</h1>
+        <h1 className="rfs-title">Aquifer Analyst</h1>
       </header>
+
+      <div className="px-4 pt-4">
+        <div className="rfs-seg" role="tablist" aria-label="Data set">
+          {(['sample', 'mine'] as const).map(v => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={dataView === v}
+              className={dataView === v ? 'active' : ''}
+              onClick={() => onDataViewChange(v)}
+            >
+              {v === 'sample' ? 'Sample Data' : 'My Data'}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <p className="rfs-eyebrow">Regions</p>
 
@@ -1142,17 +1191,27 @@ const Sidebar: React.FC<SidebarProps> = ({
         onKeyDown={handleKeyDown}
       >
         {regions.map(r => renderRegionRow(r))}
-        {regions.length === 0 && (
-          <p className="text-xs italic px-4 py-2 text-[var(--text-faint)]">No regions loaded.</p>
+        {regions.length === 0 && dataView === 'mine' && (
+          <div className="px-4 py-3 text-xs leading-relaxed text-[var(--text-dim)] space-y-3">
+            <p>
+              My Data holds regions you add yourself. It is kept in this browser, so download a backup now and then
+              and restore it if you change computers or clear your browser data.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button className="rfs-btn" onClick={onAddData}><Plus size={14} /> Add a region</button>
+              <button className="rfs-btn" onClick={() => onDataViewChange('sample')}><Copy size={14} /> Copy a sample region</button>
+            </div>
+            <p className="text-[var(--text-faint)] flex items-center gap-1.5">
+              <Upload size={12} /> Or use Restore below to load a backup.
+            </p>
+          </div>
+        )}
+        {regions.length === 0 && dataView === 'sample' && (
+          <p className="text-xs italic px-4 py-2 text-[var(--text-faint)]">No sample regions could be loaded.</p>
         )}
       </div>
 
-      <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--surface2)]">
-        <div className="flex items-center justify-center gap-2">
-          <span className="flex h-1.5 w-1.5 rounded-full bg-[var(--check)]"></span>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-faint)]">Sync Active</span>
-        </div>
-      </div>
+      <BackupBar hasMyData={hasMyData} onDataChanged={onDataChanged} />
 
       {/* Edit Region Modal */}
       {editing && editing.startsWith('region-') && (() => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
-import { processUploadedFile, UploadedFile, saveFiles, deleteFile, freshFetch } from '../../services/importUtils';
+import { processUploadedFile, UploadedFile, saveFiles, deleteFile } from '../../services/importUtils';
+import { listRegions, readJson } from '../../services/dataStore';
 import ColumnMapperModal from './ColumnMapperModal';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -66,17 +67,11 @@ const AquiferImporter: React.FC<AquiferImporterProps> = ({
       if (importMode === 'replace') {
         // Delete wells and all data files, then write new aquifers
         try { await deleteFile(`${regionId}/wells.csv`); } catch {}
-        // Delete all data_*.csv files; read from /api/regions which now
-        // scans disk for data files so we no longer depend on region.json.
+        // Delete all data_*.csv files the region holds
         try {
-          const regionsRes = await fetch('/api/regions');
-          if (regionsRes.ok) {
-            const all: any[] = await regionsRes.json();
-            const me = all.find((r: any) => r.id === regionId);
-            const dataFiles: string[] = Array.isArray(me?.dataFiles) ? me.dataFiles : [];
-            for (const f of dataFiles) {
-              try { await deleteFile(`${regionId}/${f}`); } catch {}
-            }
+          const me = (await listRegions()).find(r => r.id === regionId);
+          for (const f of me?.dataFiles ?? []) {
+            try { await deleteFile(`${regionId}/${f}`); } catch {}
           }
         } catch {}
 
@@ -88,9 +83,8 @@ const AquiferImporter: React.FC<AquiferImporterProps> = ({
         // Append: load existing, skip duplicates
         let existingFeatures: any[] = [];
         try {
-          const aqRes = await freshFetch(`/data/${regionId}/aquifers.geojson`);
-          if (aqRes.ok) {
-            const gj = await aqRes.json();
+          const gj = await readJson(`${regionId}/aquifers.geojson`);
+          if (gj) {
             existingFeatures = gj.type === 'FeatureCollection' ? gj.features : [gj];
           }
         } catch {}

@@ -1,6 +1,7 @@
 import polylabel from 'polylabel';
 import { Region, Aquifer, Well, Measurement, RegionMeta, RasterAnalysisMeta, ImputationModelMeta, DataType } from '../types';
-import { freshFetch, parseCSV } from './importUtils';
+import { parseCSV } from './importUtils';
+import { listRegions, readText, listRasters, listModels, DataSource } from './dataStore';
 import { compareNames } from '../utils/strings';
 import { loadCatalog, computeEffectiveDataTypes } from './catalog';
 
@@ -117,30 +118,27 @@ function computeLabelPoint(geojson: any, bounds: [number, number, number, number
   return [result[1], result[0]]; // [lat, lng]
 }
 
-// Load region manifest via API
-async function loadRegionManifest(): Promise<RegionMeta[]> {
+// Every region in Sample Data and My Data
+async function loadRegionManifest(): Promise<(RegionMeta & { source: DataSource })[]> {
   try {
-    const response = await freshFetch('/api/regions');
-    if (response.ok) {
-      const raw = await response.json();
-      // Migrate old shape (dataTypes) → new shape (customDataTypes) in memory
-      // so consumers never see the legacy field. The disk files are handled
-      // separately by the migration step.
-      return (raw as any[]).map((m: any): RegionMeta => ({
-        id: m.id,
-        name: m.name,
-        lengthUnit: m.lengthUnit || 'ft',
-        singleUnit: !!m.singleUnit,
-        customDataTypes: Array.isArray(m.customDataTypes)
-          ? m.customDataTypes
-          : Array.isArray(m.dataTypes)
-            ? m.dataTypes.filter((dt: DataType) => dt.code !== 'wte')
-            : [],
-        dataFiles: Array.isArray(m.dataFiles) ? m.dataFiles : [],
-      }));
-    }
+    const raw = await listRegions();
+    // Migrate old shape (dataTypes) → new shape (customDataTypes) in memory
+    // so consumers never see the legacy field.
+    return raw.map(m => ({
+      id: m.id,
+      name: m.name,
+      lengthUnit: m.lengthUnit || 'ft',
+      singleUnit: !!m.singleUnit,
+      customDataTypes: Array.isArray(m.customDataTypes)
+        ? m.customDataTypes
+        : Array.isArray(m.dataTypes)
+          ? m.dataTypes.filter((dt: DataType) => dt.code !== 'wte')
+          : [],
+      dataFiles: Array.isArray(m.dataFiles) ? m.dataFiles : [],
+      source: m.source,
+    }));
   } catch (e) {
-    console.warn('Could not load regions from API:', e);
+    console.warn('Could not list regions:', e);
   }
   return [];
 }
@@ -160,9 +158,9 @@ export async function loadAquifers(regionId: string, regionPath: string, wells: 
   }
 
   try {
-    const response = await freshFetch(`${regionPath}/aquifers.geojson`);
-    if (response.ok) {
-      const geojson = await response.json();
+    const text = await readText(`${regionPath}/aquifers.geojson`);
+    if (text !== null) {
+      const geojson = JSON.parse(text);
       const featureCollection = geojson.type === 'FeatureCollection'
         ? geojson
         : { type: 'FeatureCollection', features: [geojson] };
@@ -254,10 +252,9 @@ export async function loadWells(regionPath: string, regionId: string): Promise<W
   const wells: Well[] = [];
 
   try {
-    const response = await freshFetch(`${regionPath}/wells.csv`);
-    if (!response.ok) return wells;
+    const text = await readText(`${regionPath}/wells.csv`);
+    if (text === null) return wells;
 
-    const text = await response.text();
     const { rows } = parseCSV(text);
 
     for (const row of rows) {
@@ -295,10 +292,9 @@ export async function loadMeasurements(regionPath: string, regionId: string, dat
   const perType = await Promise.all(dataTypes.map(async dt => {
     const measurements: Measurement[] = [];
     try {
-      const response = await freshFetch(`${regionPath}/data_${dt.code}.csv`);
-      if (!response.ok) return measurements;
+      const text = await readText(`${regionPath}/data_${dt.code}.csv`);
+      if (text === null) return measurements;
 
-      const text = await response.text();
       const { rows } = parseCSV(text);
 
       for (const row of rows) {
@@ -356,15 +352,15 @@ export async function loadAllData(): Promise<{
   // the geometry-less fallback). The old fully-sequential version cost
   // dozens of serial round-trips before first paint.
   const perRegion = await Promise.all(regionMetas.map(async meta => {
-    const folderPath = `/data/${meta.id}`;
+    const folderPath = meta.id;
     const effectiveDataTypes = computeEffectiveDataTypes(meta, catalog);
 
     const [region, wells, measurements, storageMeta, modelMeta] = await Promise.all([
       (async (): Promise<Region | null> => {
         try {
-          const response = await freshFetch(`${folderPath}/region.geojson`);
-          if (!response.ok) return null;
-          const geojson = await response.json();
+          const text = await readText(`${folderPath}/region.geojson`);
+          if (text === null) return null;
+          const geojson = JSON.parse(text);
           const bounds = calculateBounds(geojson);
           return {
             id: meta.id,
@@ -374,7 +370,8 @@ export async function loadAllData(): Promise<{
             customDataTypes: meta.customDataTypes || [],
             effectiveDataTypes,
             geojson: geojson.type === 'FeatureCollection' ? geojson : { type: 'FeatureCollection', features: [geojson] },
-            bounds
+            bounds,
+            source: meta.source,
           };
         } catch (e) {
           console.warn(`Error loading region ${meta.name}:`, e);
@@ -385,8 +382,7 @@ export async function loadAllData(): Promise<{
       loadMeasurements(folderPath, meta.id, effectiveDataTypes),
       (async (): Promise<RasterAnalysisMeta[]> => {
         try {
-          const res = await freshFetch(`/api/list-rasters?region=${encodeURIComponent(meta.id)}`);
-          if (res.ok) return await res.json();
+          return await listRasters(meta.id);
         } catch (e) {
           console.warn(`Error loading storage metadata for ${meta.id}:`, e);
         }
@@ -394,8 +390,7 @@ export async function loadAllData(): Promise<{
       })(),
       (async (): Promise<ImputationModelMeta[]> => {
         try {
-          const res = await freshFetch(`/api/list-models?region=${encodeURIComponent(meta.id)}`);
-          if (res.ok) return await res.json();
+          return await listModels(meta.id);
         } catch (e) {
           console.warn(`Error loading model metadata for ${meta.id}:`, e);
         }

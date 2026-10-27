@@ -1,3 +1,4 @@
+import { saveFiles } from './dataStore';
 import {
   Aquifer, Region, Well, Measurement,
   ImputationParams, ImputationDataRow, ImputationModelResult, ImputationWellMetrics,
@@ -480,17 +481,8 @@ export async function runImputationPipeline(
     log: [], // Will be populated by caller from accumulated log messages
   };
 
-  // Save to disk
-  await fetch('/api/save-data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      files: [{
-        path: filePath,
-        content: JSON.stringify(result),
-      }],
-    }),
-  });
+  // Save to My Data
+  await saveFiles([{ path: filePath, content: JSON.stringify(result) }]);
 
   onProgress('Complete!', 100);
   onLog('Imputation complete! Model saved.');

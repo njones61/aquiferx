@@ -7,9 +7,10 @@
  * limits published. Date format in queries is MM-DD-YYYY; CSV
  * responses use YYYY-MM-DD.
  *
- * Counts come back as response headers (`Total-Result-Count`,
- * `Total-Site-Count`, etc.) — we use HEAD requests to preview download
- * size without pulling the body.
+ * Counts for the size preview come from the POST /search/count
+ * endpoints, which return them as a JSON body. The same numbers ride on
+ * every search response as headers, but WQP does not expose those to
+ * browser scripts.
  */
 
 import { ParameterCatalog } from '../types';
@@ -17,15 +18,6 @@ import { parseCSV } from './importUtils';
 import { fetchWithTimeout } from './http';
 
 const WQP_ORIGIN = 'https://www.waterqualitydata.us/data';
-
-/** All WQP requests go through the Vite-side proxy at /api/wqp-proxy.
- *  WQP doesn't send Access-Control-Expose-Headers, so the count
- *  headers (Total-Result-Count, Total-Site-Count) are hidden from
- *  browser JS when fetched directly. The proxy re-emits them with the
- *  correct expose header. */
-function viaProxy(wqpUrl: string): string {
-  return `/api/wqp-proxy?url=${encodeURIComponent(wqpUrl)}`;
-}
 
 // ============================================================================
 // Types
@@ -121,10 +113,8 @@ function buildQueryString(params: WqpQueryParams, extra: Record<string, string>)
   return parts.join('&');
 }
 
-// Requests go through the Vite WQP proxy, which enforces its own upstream
-// timeout — this browser-side timeout is a backstop so a stalled proxy
-// response can never hang the import flow. Large CSV bodies can take a
-// while, hence the generous limit.
+// A stalled response must never hang the import flow. Large CSV bodies
+// can take a while, hence the generous limit.
 const WQP_TIMEOUT_MS = 180000;
 
 async function fetchWithRetry(url: string, init?: RequestInit, maxRetries = 3): Promise<Response> {
@@ -145,26 +135,32 @@ async function fetchWithRetry(url: string, init?: RequestInit, maxRetries = 3): 
 // Counts (HEAD requests, headers only)
 // ============================================================================
 
-/** Estimate download size before the user commits. WQP populates
- *  count headers (`Total-Result-Count`, `Total-Site-Count`) on every
- *  response — including the Result endpoint — so we issue GETs and
- *  abort the body stream as soon as headers arrive. HEAD would be
- *  cheaper but WQP returns 403 for HEAD when an Origin header is
- *  present (i.e. any browser request). */
-async function getCountHeader(url: string, header: string): Promise<number> {
-  // Append &headersOnly=1 so the proxy skips the body download.
-  const u = `${url}${url.includes('?') ? '&' : '?'}headersOnly=1`;
-  const res = await fetchWithRetry(u);
-  return parseInt(res.headers.get(header) || '0', 10) || 0;
+/** Estimate download size before the user commits. The count endpoint
+ *  takes the query as a JSON body (it answers a GET with 500), with
+ *  list-valued parameters as arrays and dates as MM-DD-YYYY. */
+async function postCount(endpoint: 'Result' | 'Station', params: WqpQueryParams): Promise<Record<string, string>> {
+  const body: Record<string, unknown> = {
+    bBox: params.bBox.join(','),
+    siteType: [params.siteType || 'Well'],
+  };
+  if (params.characteristicNames?.length) body.characteristicName = params.characteristicNames;
+  if (params.startDateLo) body.startDateLo = isoToWqpDate(params.startDateLo);
+  if (params.startDateHi) body.startDateHi = isoToWqpDate(params.startDateHi);
+  if (params.providers) body.providers = params.providers.split(';');
+  const res = await fetchWithRetry(`${WQP_ORIGIN}/${endpoint}/search/count?mimeType=json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
 }
 
 export async function fetchWqpCounts(params: WqpQueryParams): Promise<WqpCounts> {
-  const qs = buildQueryString(params, { mimeType: 'csv', zip: 'no' });
-  const [resultCount, siteCount] = await Promise.all([
-    getCountHeader(viaProxy(`${WQP_ORIGIN}/Result/search?${qs}`), 'Total-Result-Count'),
-    getCountHeader(viaProxy(`${WQP_ORIGIN}/Station/search?${qs}`), 'Total-Site-Count'),
-  ]);
-  return { resultCount, siteCount };
+  const [results, stations] = await Promise.all([postCount('Result', params), postCount('Station', params)]);
+  return {
+    resultCount: parseInt(results['Total-Result-Count'] || '0', 10) || 0,
+    siteCount: parseInt(stations['Total-Site-Count'] || '0', 10) || 0,
+  };
 }
 
 // ============================================================================
@@ -173,7 +169,7 @@ export async function fetchWqpCounts(params: WqpQueryParams): Promise<WqpCounts>
 
 export async function fetchWqpStations(params: WqpQueryParams): Promise<WqpStation[]> {
   const qs = buildQueryString(params, { mimeType: 'csv', zip: 'no' });
-  const res = await fetchWithRetry(viaProxy(`${WQP_ORIGIN}/Station/search?${qs}`));
+  const res = await fetchWithRetry(`${WQP_ORIGIN}/Station/search?${qs}`);
   const text = await res.text();
   if (!text.trim()) return [];
 
@@ -213,7 +209,7 @@ export async function fetchWqpStations(params: WqpQueryParams): Promise<WqpStati
 
 export async function fetchWqpResults(params: WqpQueryParams): Promise<WqpResult[]> {
   const qs = buildQueryString(params, { mimeType: 'csv', zip: 'no' });
-  const res = await fetchWithRetry(viaProxy(`${WQP_ORIGIN}/Result/search?${qs}`));
+  const res = await fetchWithRetry(`${WQP_ORIGIN}/Result/search?${qs}`);
   const text = await res.text();
   if (!text.trim()) return [];
 

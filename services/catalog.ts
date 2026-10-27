@@ -1,11 +1,11 @@
 import { ParameterCatalog, CatalogParameter, DataType, RegionMeta } from '../types';
-import { freshFetch } from './importUtils';
 
 let cachedCatalog: ParameterCatalog | null = null;
 
 export async function loadCatalog(): Promise<ParameterCatalog> {
   if (cachedCatalog) return cachedCatalog;
-  const res = await freshFetch('/data/catalog_wq.json');
+  // Ships with the app beside the sample regions, so it follows the deploy path
+  const res = await fetch(`${import.meta.env.BASE_URL}data/catalog_wq.json`);
   if (!res.ok) throw new Error(`Failed to load catalog_wq.json: ${res.status}`);
   cachedCatalog = (await res.json()) as ParameterCatalog;
   return cachedCatalog;

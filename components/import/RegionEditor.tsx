@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, Trash2, Loader2 } from 'lucide-react';
 import { RegionMeta } from '../../types';
-import { freshFetch, saveFiles } from '../../services/importUtils';
+import { saveFiles } from '../../services/importUtils';
+import { deleteFolder, readJson } from '../../services/dataStore';
 import ConfirmDialog from './ConfirmDialog';
 
 interface RegionEditorProps {
@@ -58,13 +59,8 @@ const RegionEditor: React.FC<RegionEditorProps> = ({ regions, onSave, onClose })
     try {
       // Delete the region folder
       setDeleteProgress(30);
-      const res = await fetch('/api/delete-folder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: deleteTarget.id }),
-      });
+      await deleteFolder(deleteTarget.id);
       setDeleteProgress(80);
-      if (!res.ok) throw new Error(await res.text());
       setDeleteProgress(100);
       // Remove from list
       setRows(prev => prev.filter(r => r.id !== deleteTarget.id));
@@ -89,9 +85,8 @@ const RegionEditor: React.FC<RegionEditorProps> = ({ regions, onSave, onClose })
         if (row.name === orig.name && row.lengthUnit === orig.lengthUnit) continue;
 
         // Load the existing region.json and update it
-        const res = await freshFetch(`/data/${row.id}/region.json`);
-        if (!res.ok) throw new Error(`Failed to load region.json for ${row.id}`);
-        const meta = await res.json();
+        const meta = await readJson(`${row.id}/region.json`);
+        if (!meta) throw new Error(`Failed to load region.json for ${row.id}`);
         meta.name = row.name.trim();
         meta.lengthUnit = row.lengthUnit;
 

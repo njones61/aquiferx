@@ -1,3 +1,4 @@
+import { readJson, saveFiles } from './dataStore';
 import {
   Aquifer, Region, Well, Measurement,
   RasterAnalysisParams, RasterAnalysisResult, RasterGrid, RasterFrame, RasterFrameStats,
@@ -118,9 +119,8 @@ export async function runRasterAnalysis(
     onProgress('Loading imputation model...', 5);
     await tick();
 
-    const modelResp = await fetch(`/data/${temporal.modelFilePath}`);
-    if (!modelResp.ok) throw new Error(`Failed to load model: ${temporal.modelFilePath}`);
-    const modelResult: ImputationModelResult = await modelResp.json();
+    const modelResult = await readJson<ImputationModelResult>(temporal.modelFilePath);
+    if (!modelResult) throw new Error(`Failed to load model: ${temporal.modelFilePath}`);
 
     // Group model data by well
     const modelByWell = new Map<string, { dates: number[]; values: number[] }>();
@@ -172,9 +172,8 @@ export async function runRasterAnalysis(
     onProgress('Loading imputation model...', 5);
     await tick();
 
-    const modelResp = await fetch(`/data/${temporal.modelFilePath}`);
-    if (!modelResp.ok) throw new Error(`Failed to load model: ${temporal.modelFilePath}`);
-    const modelResult: ImputationModelResult = await modelResp.json();
+    const modelResult = await readJson<ImputationModelResult>(temporal.modelFilePath);
+    if (!modelResult) throw new Error(`Failed to load model: ${temporal.modelFilePath}`);
 
     // Group model data by well
     const modelByWell = new Map<string, { date: string; combined: number }[]>();
@@ -500,20 +499,14 @@ export async function runRasterAnalysis(
     stats,
   };
 
-  // Save to disk via API — per-aquifer subfolder with raster_ prefix.
+  // Save to My Data — per-aquifer subfolder with raster_ prefix.
   // Final cancellation check so a cancelled run never writes its file.
   await tick();
   const aquiferSlug = slugify(aquifer.name);
-  await fetch('/api/save-data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      files: [{
-        path: `${region.id}/${aquiferSlug}/raster_${dataType}_${code}.json`,
-        content: JSON.stringify(result),
-      }]
-    }),
-  });
+  await saveFiles([{
+    path: `${region.id}/${aquiferSlug}/raster_${dataType}_${code}.json`,
+    content: JSON.stringify(result),
+  }]);
 
   onProgress('Complete!', 100);
   return result;

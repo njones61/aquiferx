@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, Loader2 } from 'lucide-react';
 import { DataType } from '../../types';
-import { freshFetch, saveFiles, parseCSV, toCsv, WELLS_CSV_HEADERS } from '../../services/importUtils';
+import { saveFiles, parseCSV, toCsv, WELLS_CSV_HEADERS } from '../../services/importUtils';
+import { readJson, readText } from '../../services/dataStore';
 import { compareNames } from '../../utils/strings';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -34,9 +35,8 @@ const AquiferEditor: React.FC<AquiferEditorProps> = ({ regionId, regionName, dat
   useEffect(() => {
     (async () => {
       try {
-        const res = await freshFetch(`/data/${regionId}/aquifers.geojson`);
-        if (!res.ok) { setLoading(false); return; }
-        const gj = await res.json();
+        const gj = await readJson(`${regionId}/aquifers.geojson`);
+        if (!gj) { setLoading(false); return; }
         const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
         // Group by aquifer_id
         const grouped = new Map<string, { name: string; features: any[] }>();
@@ -97,9 +97,9 @@ const AquiferEditor: React.FC<AquiferEditorProps> = ({ regionId, regionName, dat
       let wellsCsvContent = toCsv(WELLS_CSV_HEADERS, []);
       const deletedWellIds = new Set<string>();
       try {
-        const wRes = await freshFetch(`/data/${regionId}/wells.csv`);
-        if (wRes.ok) {
-          const { headers, rows } = parseCSV(await wRes.text());
+        const wText = await readText(`${regionId}/wells.csv`);
+        if (wText !== null) {
+          const { headers, rows } = parseCSV(wText);
           const kept: Record<string, string>[] = [];
           for (const r of rows) {
             if ((r.aquifer_id || '') === aquiferId) {
@@ -117,9 +117,9 @@ const AquiferEditor: React.FC<AquiferEditorProps> = ({ regionId, regionName, dat
       const dataFiles: { path: string; content: string }[] = [];
       for (const dt of dataTypes) {
         try {
-          const mRes = await freshFetch(`/data/${regionId}/data_${dt.code}.csv`);
-          if (mRes.ok) {
-            const { headers, rows } = parseCSV(await mRes.text());
+          const mText = await readText(`${regionId}/data_${dt.code}.csv`);
+          if (mText !== null) {
+            const { headers, rows } = parseCSV(mText);
             if (headers.length > 0) {
               // Remove if well was deleted OR aquifer matches
               const kept = rows.filter(r =>

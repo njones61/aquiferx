@@ -3,7 +3,9 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Layers, Map as MapIcon, Database, ChevronRight, Activity, Wand2, Grid3x3, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
 import { Region, Aquifer, Well, Measurement, DataType, RasterAnalysisResult, RasterAnalysisMeta, CrossSectionProfile, ImputationModelResult, ImputationModelMeta } from './types';
 import { loadAllData } from './services/dataLoader';
-import { freshFetch, toCsv, escapeCsvField, WELLS_CSV_HEADERS } from './services/importUtils';
+import { toCsv, escapeCsvField, WELLS_CSV_HEADERS } from './services/importUtils';
+import { saveFiles, deleteFile, deleteFolder, readJson, renameAnalysis, downloadRegion, copyToMyData, DataSource } from './services/dataStore';
+import ConfirmDialog from './components/import/ConfirmDialog';
 import { slugify } from './utils/strings';
 import MapView, { MapViewHandle } from './components/MapView';
 import Sidebar from './components/Sidebar';
@@ -23,7 +25,6 @@ import RasterStatsChart from './components/RasterStatsChart';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import JSZip from 'jszip';
 import ExpandedChartWindow from './components/ExpandedChartWindow';
 import { RasterFrame, useRasterFrameSetter } from './contexts/RasterFrameContext';
 import {
@@ -39,6 +40,13 @@ const STORAGE_COLORS = ['#34d399', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '
 const App: React.FC = () => {
 
   const [regions, setRegions] = useState<Region[]>([]);
+  // Which set the panel and map show. Remembered per browser; a first visit
+  // opens on Sample Data so there is something to look at.
+  const [dataView, setDataViewState] = useState<DataSource>(() => {
+    try { return localStorage.getItem('aqx-data-view') === 'mine' ? 'mine' : 'sample'; } catch { return 'sample'; }
+  });
+  // A write the user asked for on a sample region, waiting on "Copy to My Data"
+  const [copyPrompt, setCopyPrompt] = useState<{ regionId: string; action: string } | null>(null);
   const [aquifers, setAquifers] = useState<Aquifer[]>([]);
   const [wells, setWells] = useState<Well[]>([]);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
@@ -147,6 +155,28 @@ const App: React.FC = () => {
       return updated.size !== prev.size ? updated : prev;
     });
   }, [regions]);
+
+  const viewRegions = useMemo(() => regions.filter(r => r.source === dataView), [regions, dataView]);
+  const hasMyData = useMemo(() => regions.some(r => r.source === 'mine'), [regions]);
+
+  const setDataView = (view: DataSource) => {
+    setDataViewState(view);
+    try { localStorage.setItem('aqx-data-view', view); } catch { /* not remembered */ }
+    if (selectedRegion && selectedRegion.source !== view) {
+      setSelectedRegion(null);
+      setSelectedAquifer(null);
+      setSelectedWells([]);
+    }
+  };
+
+  /** Run a write, or, on a sample region, offer to copy it to My Data instead. */
+  const unlessSample = (action: string, run: () => void) => {
+    if (selectedRegion?.source === 'sample') {
+      setCopyPrompt({ regionId: selectedRegion.id, action });
+      return;
+    }
+    run();
+  };
 
   const toggleRegionVisibility = (id: string) => {
     setVisibleRegionIds(prev => {
@@ -356,8 +386,10 @@ const App: React.FC = () => {
         );
         if (updatedAquifer) setSelectedAquifer(updatedAquifer);
       }
+      return data;
     } catch (e) {
       console.error('Failed to reload data:', e);
+      return null;
     }
   };
 
@@ -365,9 +397,8 @@ const App: React.FC = () => {
   const handleLoadRaster = async (meta: RasterAnalysisMeta) => {
     setLoadingRasterCode(meta.code);
     try {
-      const res = await fetch(`/data/${meta.filePath}`);
-      if (res.ok) {
-        const fullResult: RasterAnalysisResult = await res.json();
+      const fullResult = await readJson<RasterAnalysisResult>(meta.filePath);
+      if (fullResult) {
         // Switch the view to the raster's region/aquifer if needed (use
         // refs for current values)
         if (selectedRegionRef.current?.id !== meta.regionId) {
@@ -413,12 +444,11 @@ const App: React.FC = () => {
     }
     setLoadingRasterCode(meta.code);
     try {
-      const res = await fetch(`/data/${meta.filePath}`);
-      if (res.ok) {
-        const fullResult: RasterAnalysisResult = await res.json();
+      const fullResult = await readJson<RasterAnalysisResult>(meta.filePath);
+      if (fullResult) {
         setCompareRasterResults(prev => [...prev, fullResult]);
       } else {
-        console.error(`Failed to load raster for comparison: HTTP ${res.status}`);
+        console.error(`Failed to load raster for comparison: ${meta.filePath} not found`);
       }
     } catch (e) {
       console.error('Failed to load raster for comparison:', e);
@@ -436,11 +466,7 @@ const App: React.FC = () => {
     setRasterMeta(prev => prev.filter(m => !(m.code === meta.code && m.dataType === meta.dataType && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId)));
     // Delete the file on disk
     try {
-      await fetch('/api/delete-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: meta.filePath }),
-      });
+      await deleteFile(meta.filePath);
     } catch (e) {
       console.error('Failed to delete raster analysis file:', e);
     }
@@ -454,12 +480,8 @@ const App: React.FC = () => {
     const newPath = `${dir}/raster_${meta.dataType}_${newCode}.json`;
 
     try {
-      const res = await fetch('/api/rename-raster', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath, newPath, newCode, newTitle }),
-      });
-      if (res.ok) {
+      await renameAnalysis(oldPath, newPath, newCode, newTitle);
+      {
         setRasterMeta(prev => prev.map(m =>
           m.code === meta.code && m.dataType === meta.dataType && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId
             ? { ...m, title: newTitle, code: newCode, filePath: newPath }
@@ -489,9 +511,8 @@ const App: React.FC = () => {
   const handleLoadModel = async (meta: ImputationModelMeta) => {
     setLoadingModelCode(meta.code);
     try {
-      const res = await fetch(`/data/${meta.filePath}`);
-      if (res.ok) {
-        const fullResult: ImputationModelResult = await res.json();
+      const fullResult = await readJson<ImputationModelResult>(meta.filePath);
+      if (fullResult) {
         // Switch the view to the model's region/aquifer if needed
         if (selectedRegionRef.current?.id !== meta.regionId) {
           const region = regions.find(r => r.id === meta.regionId);
@@ -507,7 +528,7 @@ const App: React.FC = () => {
           setSelectedDataType(meta.dataType);
         }
       } else {
-        console.error(`Failed to load model: HTTP ${res.status}`);
+        console.error(`Failed to load model: ${meta.filePath} not found`);
       }
     } catch (e) {
       console.error('Failed to load model:', e);
@@ -526,11 +547,7 @@ const App: React.FC = () => {
     }
     setModelMeta(prev => prev.filter(m => !(m.code === meta.code && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId)));
     try {
-      await fetch('/api/delete-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: meta.filePath }),
-      });
+      await deleteFile(meta.filePath);
     } catch (e) {
       console.error('Failed to delete model file:', e);
     }
@@ -543,12 +560,8 @@ const App: React.FC = () => {
     const newPath = `${dir}/model_wte_${newCode}.json`;
 
     try {
-      const res = await fetch('/api/rename-model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath, newPath, newCode, newTitle }),
-      });
-      if (res.ok) {
+      await renameAnalysis(oldPath, newPath, newCode, newTitle);
+      {
         setModelMeta(prev => prev.map(m =>
           m.code === meta.code && m.regionId === meta.regionId && m.aquiferId === meta.aquiferId
             ? { ...m, title: newTitle, code: newCode, filePath: newPath }
@@ -564,6 +577,10 @@ const App: React.FC = () => {
   };
 
   const handleOpenImputationWizard = () => {
+    if (selectedRegion?.source === 'sample') {
+      setCopyPrompt({ regionId: selectedRegion.id, action: 'impute its water levels' });
+      return;
+    }
     // Open immediately; fetch the GLDAS date range in the background.
     // Awaiting it first made the button appear dead for up to 15s when the
     // GLDAS service is slow — the wizard already handles a null range and
@@ -757,23 +774,14 @@ const App: React.FC = () => {
       singleUnit: region.singleUnit,
       customDataTypes: region.customDataTypes,
     };
-    await fetch('/api/save-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: [{ path: `${regionId}/region.json`, content: JSON.stringify(regionMeta, null, 2) }] }),
-    });
+    await saveFiles([{ path: `${regionId}/region.json`, content: JSON.stringify(regionMeta, null, 2) }]);
   };
 
   const handleDeleteRegion = async (regionId: string) => {
     // Delete folder on disk first — keep the row mounted so the sidebar can
     // show its deleting spinner until the backend confirms completion.
     try {
-      const res = await fetch('/api/delete-folder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: regionId }),
-      });
-      if (!res.ok) throw new Error(`delete-folder failed: ${res.status}`);
+      await deleteFolder(regionId);
     } catch (err) {
       console.error('Failed to delete region folder:', err);
       alert(`Failed to delete region. ${err instanceof Error ? err.message : ''}`);
@@ -793,44 +801,28 @@ const App: React.FC = () => {
     setMeasurements(prev => prev.filter(m => !deletedWellIds.has(`${m.regionId}:${m.aquiferId}:${m.wellId}`)));
   };
 
+  const handleCopyToMyData = async (regionId: string) => {
+    try {
+      const newId = await copyToMyData(regionId);
+      const data = await handleDataChanged();
+      setDataViewState('mine');
+      try { localStorage.setItem('aqx-data-view', 'mine'); } catch { /* not remembered */ }
+      const copy = data?.regions.find(r => r.id === newId) ?? null;
+      setSelectedRegion(copy);
+      setSelectedWells([]);
+      setSelectedAquifer(copy?.singleUnit ? data?.aquifers.find(a => a.regionId === newId) ?? null : null);
+    } catch (err) {
+      console.error('Failed to copy region:', err);
+      alert(`Could not copy the region to My Data. ${err instanceof Error ? err.message : ''}`);
+    }
+  };
+
   const handleDownloadRegion = async (regionId: string) => {
-    const region = regions.find(r => r.id === regionId);
-    if (!region) return;
-    const basePath = `/data/${regionId}`;
-    const zip = new JSZip();
-
-    // Always include region.json and region.geojson
-    const staticFiles = ['region.json', 'region.geojson', 'aquifers.geojson', 'wells.csv'];
-    for (const name of staticFiles) {
-      try {
-        const res = await freshFetch(`${basePath}/${name}`);
-        if (res.ok) {
-          zip.file(name, await res.text());
-        }
-      } catch {
-        // skip files that don't exist
-      }
+    try {
+      await downloadRegion(regionId);
+    } catch (err) {
+      console.error('Failed to download region:', err);
     }
-
-    // Dynamically include all data_*.csv files
-    for (const dt of region.effectiveDataTypes) {
-      try {
-        const res = await freshFetch(`${basePath}/data_${dt.code}.csv`);
-        if (res.ok) {
-          zip.file(`data_${dt.code}.csv`, await res.text());
-        }
-      } catch {
-        // skip
-      }
-    }
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${region.name.replace(/[^a-z0-9]+/gi, '_')}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleRenameAquifer = async (aquiferId: string, newName: string) => {
@@ -849,11 +841,7 @@ const App: React.FC = () => {
       }))
     );
     const geojsonContent = JSON.stringify({ type: 'FeatureCollection', features }, null, 2);
-    await fetch('/api/save-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: [{ path: `${regionId}/aquifers.geojson`, content: geojsonContent }] }),
-    });
+    await saveFiles([{ path: `${regionId}/aquifers.geojson`, content: geojsonContent }]);
   };
 
   const handleDeleteAquifer = async (aquiferId: string) => {
@@ -913,17 +901,11 @@ const App: React.FC = () => {
       dataFiles.push({ path: `${regionId}/data_${dt.code}.csv`, content });
     }
 
-    await fetch('/api/save-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        files: [
+    await saveFiles([
           { path: `${regionId}/aquifers.geojson`, content: geojsonContent },
           { path: `${regionId}/wells.csv`, content: wellsCsvContent },
           ...dataFiles,
-        ],
-      }),
-    });
+    ]);
   };
 
   // Export time series data to CSV
@@ -1005,6 +987,10 @@ const App: React.FC = () => {
 
   // Save handler for DataEditor
   const handleDataEditorSave = async (updatedMeasurements: Measurement[]) => {
+    if (selectedRegion?.source === 'sample') {
+      setCopyPrompt({ regionId: selectedRegion.id, action: 'edit its measurements' });
+      return;
+    }
     setMeasurements(updatedMeasurements);
     // Rebuild and persist the data CSV for the active data type in this region
     const regionId = selectedWells[0].regionId;
@@ -1020,11 +1006,7 @@ const App: React.FC = () => {
       value: String(m.value),
       aquifer_id: m.aquiferId,
     })));
-    await fetch('/api/save-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: [{ path: `${regionId}/data_${dtCode}.csv`, content: csvContent }] }),
-    });
+    await saveFiles([{ path: `${regionId}/data_${dtCode}.csv`, content: csvContent }]);
   };
 
   // Loading state
@@ -1064,7 +1046,13 @@ const App: React.FC = () => {
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
       {/* Sidebar */}
       <Sidebar
-        regions={regions}
+        regions={viewRegions}
+        dataView={dataView}
+        onDataViewChange={setDataView}
+        hasMyData={hasMyData}
+        onCopyToMyData={regionId => handleCopyToMyData(regionId)}
+        onAddData={() => { setDataView('mine'); setIsDataManagerOpen(true); }}
+        onDataChanged={() => { handleDataChanged(); setDataView('mine'); }}
         selectedRegion={selectedRegion}
         setSelectedRegion={(r) => {
           setSelectedRegion(r);
@@ -1225,7 +1213,7 @@ const App: React.FC = () => {
             )}
             {selectedAquifer && (
               <button
-                onClick={() => setRasterDialogOpen(true)}
+                onClick={() => unlessSample('build a raster from it', () => setRasterDialogOpen(true))}
                 className="rfs-btn icon"
                 data-tip="Spatial Analysis"
                 aria-label="Spatial Analysis"
@@ -1244,7 +1232,7 @@ const App: React.FC = () => {
               </button>
             )}
             <button
-              onClick={() => setIsDataManagerOpen(true)}
+              onClick={() => { setDataView('mine'); setIsDataManagerOpen(true); }}
               className="rfs-btn icon"
               data-tip="Manage Data"
               aria-label="Manage Data"
@@ -1259,7 +1247,7 @@ const App: React.FC = () => {
           <div className="flex-1 relative">
             <MapView
               ref={mapViewRef}
-              regions={regions.filter(r => visibleRegionIds.has(r.id))}
+              regions={viewRegions.filter(r => visibleRegionIds.has(r.id))}
               aquifers={filteredAquifers}
               wells={filteredWells}
               measurements={measurements}
@@ -1798,12 +1786,23 @@ const App: React.FC = () => {
         </div>
       </main>
 
+      {copyPrompt && (
+        <ConfirmDialog
+          title="Sample Data is read-only"
+          message={`To ${copyPrompt.action}, copy ${regions.find(r => r.id === copyPrompt.regionId)?.name ?? 'this region'} to My Data first. The copy is yours to change; the sample stays as it is.`}
+          confirmLabel="Copy to My Data"
+          variant="info"
+          onCancel={() => setCopyPrompt(null)}
+          onConfirm={() => { const id = copyPrompt.regionId; setCopyPrompt(null); handleCopyToMyData(id); }}
+        />
+      )}
+
       {/* Import Data Hub */}
       {isDataManagerOpen && (
         <ImportDataHub
           onClose={() => setIsDataManagerOpen(false)}
           onDataChanged={handleDataChanged}
-          initialRegionId={selectedRegion?.id || null}
+          initialRegionId={selectedRegion?.source === 'mine' ? selectedRegion.id : null}
         />
       )}
 

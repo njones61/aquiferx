@@ -5,6 +5,7 @@ import { saveFiles, deleteFile } from '../../services/importUtils';
 import { loadCatalog } from '../../services/catalog';
 import ConfirmDialog from './ConfirmDialog';
 import CatalogBrowser from '../CatalogBrowser';
+import { listRegions } from '../../services/dataStore';
 
 interface DataTypeEditorProps {
   regionId: string;
@@ -62,9 +63,7 @@ const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
   useEffect(() => {
     const fetchSuggestions = async () => {
       try {
-        const res = await fetch('/api/regions');
-        if (!res.ok) return;
-        const allRegions: any[] = await res.json();
+        const allRegions: any[] = await listRegions();
         const existing = new Set(types.map(t => t.code));
         const seen = new Set<string>();
         const sugs: DataType[] = [];

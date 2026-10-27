@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, MapPin, Layers, Navigation, BarChart3, Plus, Settings, Download, Upload, Loader2, CheckCircle2, AlertTriangle, Pencil } from 'lucide-react';
-import JSZip from 'jszip';
 import { RegionMeta, DataType, ParameterCatalog } from '../../types';
-import { freshFetch, saveFiles } from '../../services/importUtils';
+import { listRegions, readJson, readText } from '../../services/dataStore';
 import { loadCatalog, computeEffectiveDataTypes } from '../../services/catalog';
 import RegionImporter from './RegionImporter';
 import AquiferImporter from './AquiferImporter';
@@ -27,9 +26,8 @@ interface RegionInfo extends RegionMeta {
 }
 
 async function fetchRegionList(catalog: ParameterCatalog | null): Promise<RegionInfo[]> {
-  const res = await fetch('/api/regions');
-  if (!res.ok) return [];
-  const rawMetas: any[] = await res.json();
+  // Imports only ever write to My Data, so the hub lists only those regions
+  const rawMetas: any[] = (await listRegions()).filter(r => r.source === 'mine');
   // Normalize legacy dataTypes → customDataTypes in memory
   const metas: RegionMeta[] = rawMetas.map(m => ({
     id: m.id,
@@ -58,9 +56,8 @@ async function fetchRegionList(catalog: ParameterCatalog | null): Promise<Region
 
     // Load region bounds from geojson
     try {
-      const gjRes = await freshFetch(`/data/${meta.id}/region.geojson`);
-      if (gjRes.ok) {
-        const gj = await gjRes.json();
+      const gj = await readJson(`${meta.id}/region.geojson`);
+      if (gj) {
         const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
         let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
         const visitCoords = (arr: any) => {
@@ -85,9 +82,8 @@ async function fetchRegionList(catalog: ParameterCatalog | null): Promise<Region
 
     // Count aquifers
     try {
-      const aqRes = await freshFetch(`/data/${meta.id}/aquifers.geojson`);
-      if (aqRes.ok) {
-        const gj = await aqRes.json();
+      const gj = await readJson(`${meta.id}/aquifers.geojson`);
+      if (gj) {
         const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
         const ids = new Set(features.map((f: any) => String(f.properties?.aquifer_id || '')));
         info.aquiferCount = ids.size;
@@ -96,9 +92,8 @@ async function fetchRegionList(catalog: ParameterCatalog | null): Promise<Region
 
     // Count wells
     try {
-      const wRes = await freshFetch(`/data/${meta.id}/wells.csv`);
-      if (wRes.ok) {
-        const text = await wRes.text();
+      const text = await readText(`${meta.id}/wells.csv`);
+      if (text !== null) {
         info.wellCount = Math.max(0, text.split('\n').filter(l => l.trim()).length - 1);
       }
     } catch {}
@@ -110,9 +105,8 @@ async function fetchRegionList(catalog: ParameterCatalog | null): Promise<Region
       if (!m) continue;
       const code = m[1];
       try {
-        const mRes = await freshFetch(`/data/${meta.id}/${f}`);
-        if (mRes.ok) {
-          const text = await mRes.text();
+        const text = await readText(`${meta.id}/${f}`);
+        if (text !== null) {
           info.measurementCounts[code] = Math.max(0, text.split('\n').filter(l => l.trim()).length - 1);
         }
       } catch {}
@@ -131,16 +125,6 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
   const [showRegionEditor, setShowRegionEditor] = useState(false);
   const [showAquiferEditor, setShowAquiferEditor] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Database export/import state
-  const [dbAction, setDbAction] = useState<'idle' | 'exporting' | 'importing'>('idle');
-  const [importDbFile, setImportDbFile] = useState<File | null>(null);
-  const [importDbStep, setImportDbStep] = useState<'idle' | 'choose-mode' | 'confirm' | 'importing' | 'results'>('idle');
-  const [importDbMode, setImportDbMode] = useState<'append' | 'replace'>('append');
-  const [importDbResults, setImportDbResults] = useState<{
-    imported: string[]; skipped: { name: string; reason: string }[]; errors: string[];
-  } | null>(null);
-  const importFileRef = useRef<HTMLInputElement>(null);
 
   const loadRegions = async () => {
     setIsLoading(true);
@@ -162,171 +146,6 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
   };
 
   useEffect(() => { loadRegions(); }, []);
-
-  // --- Database Export ---
-  const handleExportDatabase = async () => {
-    setDbAction('exporting');
-    try {
-      const zip = new JSZip();
-      for (const region of regionList) {
-        const prefix = region.id;
-        const filesToFetch = [
-          'region.json', 'region.geojson', 'aquifers.geojson', 'wells.csv',
-          ...(region.dataFiles || []),
-        ];
-        for (const filename of filesToFetch) {
-          try {
-            const res = await freshFetch(`/data/${prefix}/${filename}`);
-            if (res.ok) {
-              const text = await res.text();
-              zip.file(`${prefix}/${filename}`, text);
-            }
-          } catch {}
-        }
-      }
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const date = new Date().toISOString().slice(0, 10);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `aquiferx-database-${date}.zip`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (err) {
-      console.error('Export failed:', err);
-    } finally {
-      setDbAction('idle');
-    }
-  };
-
-  // --- Database Import ---
-  const handleImportDbFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportDbFile(file);
-    setImportDbResults(null);
-    if (regionList.length === 0) {
-      setImportDbMode('replace');
-      setImportDbStep('confirm');
-    } else {
-      setImportDbStep('choose-mode');
-    }
-    // Reset input so the same file can be re-selected
-    e.target.value = '';
-  };
-
-  const handleImportDbExecute = async () => {
-    if (!importDbFile) return;
-    setImportDbStep('importing');
-    setDbAction('importing');
-    const imported: string[] = [];
-    const skipped: { name: string; reason: string }[] = [];
-    const errors: string[] = [];
-
-    try {
-      const zip = await JSZip.loadAsync(importDbFile);
-
-      // Discover regions in the zip by finding region.json files
-      const regionEntries: { prefix: string; meta: RegionMeta }[] = [];
-      for (const [path, entry] of Object.entries(zip.files)) {
-        if (entry.dir) continue;
-        if (path.endsWith('/region.json')) {
-          try {
-            const text = await entry.async('text');
-            const meta = JSON.parse(text) as RegionMeta;
-            const prefix = path.replace(/\/region\.json$/, '');
-            regionEntries.push({ prefix, meta });
-          } catch (err) {
-            errors.push(`Failed to parse ${path}: ${err}`);
-          }
-        }
-      }
-
-      if (regionEntries.length === 0) {
-        errors.push('No regions found in zip (no region.json files)');
-        setImportDbResults({ imported, skipped, errors });
-        setImportDbStep('results');
-        setDbAction('idle');
-        return;
-      }
-
-      // Replace mode: delete all existing regions first
-      if (importDbMode === 'replace') {
-        for (const existing of regionList) {
-          try {
-            const res = await fetch('/api/delete-folder', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ folder: existing.id })
-            });
-            if (!res.ok) {
-              errors.push(`Failed to delete existing region "${existing.name}": ${await res.text()}`);
-            }
-          } catch (err) {
-            errors.push(`Failed to delete existing region "${existing.name}": ${err}`);
-          }
-        }
-      }
-
-      // Build set of existing region names for append-mode dedup
-      const existingNames = new Set(
-        importDbMode === 'append' ? regionList.map(r => r.name.toLowerCase()) : []
-      );
-
-      for (const { prefix, meta } of regionEntries) {
-        // Append mode: skip if name matches
-        if (importDbMode === 'append' && existingNames.has(meta.name.toLowerCase())) {
-          skipped.push({ name: meta.name, reason: 'Region with same name already exists' });
-          continue;
-        }
-
-        try {
-          // Collect all files under this prefix, normalizing region.json
-          // from the legacy dataTypes shape if needed.
-          const files: { path: string; content: string }[] = [];
-          for (const [path, entry] of Object.entries(zip.files)) {
-            if (entry.dir) continue;
-            if (path.startsWith(prefix + '/')) {
-              const relativePath = path;
-              let text = await entry.async('text');
-              // Migrate legacy region.json: dataTypes → customDataTypes
-              if (path.endsWith('/region.json')) {
-                try {
-                  const raw = JSON.parse(text);
-                  if (Array.isArray(raw.dataTypes) && !raw.customDataTypes) {
-                    raw.customDataTypes = raw.dataTypes.filter((dt: any) => dt.code !== 'wte');
-                    delete raw.dataTypes;
-                    text = JSON.stringify(raw, null, 2);
-                  }
-                } catch {}
-              }
-              files.push({ path: `data/${relativePath}`, content: text });
-            }
-          }
-          await saveFiles(files);
-          imported.push(meta.name);
-        } catch (err) {
-          errors.push(`Failed to import "${meta.name}": ${err}`);
-        }
-      }
-
-      // Refresh
-      await loadRegions();
-      onDataChanged();
-    } catch (err) {
-      errors.push(`Failed to read zip file: ${err}`);
-    }
-
-    setImportDbResults({ imported, skipped, errors });
-    setImportDbStep('results');
-    setDbAction('idle');
-  };
-
-  const resetImportDb = () => {
-    setImportDbFile(null);
-    setImportDbStep('idle');
-    setImportDbMode('append');
-    setImportDbResults(null);
-  };
 
   const activeRegion = useMemo(() =>
     regionList.find(r => r.id === activeRegionId) || null,
@@ -364,30 +183,6 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
             <p className="text-xs text-slate-500 font-medium">Manage regions and their data</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleExportDatabase}
-              disabled={regionList.length === 0 || dbAction !== 'idle'}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-md text-xs font-medium hover:bg-emerald-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-              title="Export all regions as a zip file"
-            >
-              {dbAction === 'exporting' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-              Export Database
-            </button>
-            <label
-              className={`flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-md text-xs font-medium hover:bg-amber-100 transition-colors cursor-pointer ${dbAction !== 'idle' ? 'opacity-40 pointer-events-none' : ''}`}
-              title="Import regions from a zip file"
-            >
-              <Upload size={14} />
-              Import Database
-              <input
-                ref={importFileRef}
-                type="file"
-                accept=".zip"
-                className="hidden"
-                onChange={handleImportDbFileSelect}
-                disabled={dbAction !== 'idle'}
-              />
-            </label>
             <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
               <X size={20} />
             </button>
@@ -534,140 +329,6 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
           </button>
         </footer>
       </div>
-
-      {/* Database Import Modal */}
-      {importDbStep !== 'idle' && (
-        <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-
-            {/* Choose Mode */}
-            {importDbStep === 'choose-mode' && (
-              <>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">Import Database</h3>
-                <p className="text-sm text-slate-500 mb-4">
-                  You have {regionList.length} existing region{regionList.length !== 1 ? 's' : ''}. How should the import be handled?
-                </p>
-                <div className="space-y-3 mb-4">
-                  <button
-                    onClick={() => { setImportDbMode('append'); setImportDbStep('confirm'); }}
-                    className="w-full flex items-center gap-3 p-4 border-2 border-blue-200 rounded-xl hover:bg-blue-50 transition-colors text-left"
-                  >
-                    <div className="p-2 rounded-lg bg-blue-100 text-blue-600"><Plus size={20} /></div>
-                    <div>
-                      <p className="font-semibold text-slate-800">Append</p>
-                      <p className="text-xs text-slate-500">Add new regions, skip those with matching names</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => { setImportDbMode('replace'); setImportDbStep('confirm'); }}
-                    className="w-full flex items-center gap-3 p-4 border-2 border-red-200 rounded-xl hover:bg-red-50 transition-colors text-left"
-                  >
-                    <div className="p-2 rounded-lg bg-red-100 text-red-600"><AlertTriangle size={20} /></div>
-                    <div>
-                      <p className="font-semibold text-slate-800">Replace</p>
-                      <p className="text-xs text-slate-500">Delete all existing regions and import from zip</p>
-                    </div>
-                  </button>
-                </div>
-                <button onClick={resetImportDb} className="w-full py-2 text-sm text-slate-500 hover:text-slate-700">
-                  Cancel
-                </button>
-              </>
-            )}
-
-            {/* Confirm */}
-            {importDbStep === 'confirm' && (
-              <>
-                <h3 className="text-lg font-bold text-slate-800 mb-3">Confirm Import</h3>
-                <div className="space-y-2 mb-4 text-sm">
-                  <p className="text-slate-600"><span className="font-medium">File:</span> {importDbFile?.name}</p>
-                  <p className="text-slate-600"><span className="font-medium">Mode:</span> {importDbMode === 'append' ? 'Append (skip duplicates)' : 'Replace (delete existing)'}</p>
-                  {importDbMode === 'replace' && regionList.length > 0 && (
-                    <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-red-700 text-xs font-medium flex items-center gap-1.5">
-                        <AlertTriangle size={14} />
-                        This will permanently delete all {regionList.length} existing region{regionList.length !== 1 ? 's' : ''} before importing.
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => regionList.length > 0 ? setImportDbStep('choose-mode') : resetImportDb()}
-                    className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={handleImportDbExecute}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${
-                      importDbMode === 'replace' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
-                    }`}
-                  >
-                    {importDbMode === 'replace' ? 'Replace & Import' : 'Import'}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Importing */}
-            {importDbStep === 'importing' && (
-              <div className="flex flex-col items-center py-8">
-                <Loader2 size={32} className="animate-spin text-blue-500 mb-4" />
-                <p className="text-sm font-medium text-slate-600">
-                  {importDbMode === 'replace' ? 'Replacing database...' : 'Importing regions...'}
-                </p>
-              </div>
-            )}
-
-            {/* Results */}
-            {importDbStep === 'results' && importDbResults && (
-              <>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Import Complete</h3>
-                <div className="space-y-3 max-h-64 overflow-y-auto mb-4">
-                  {importDbResults.imported.length > 0 && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-xs font-semibold text-green-700 mb-1 flex items-center gap-1.5">
-                        <CheckCircle2 size={14} /> Imported ({importDbResults.imported.length})
-                      </p>
-                      <ul className="text-xs text-green-600 space-y-0.5">
-                        {importDbResults.imported.map(name => <li key={name}>{name}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {importDbResults.skipped.length > 0 && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <p className="text-xs font-semibold text-amber-700 mb-1 flex items-center gap-1.5">
-                        <AlertTriangle size={14} /> Skipped ({importDbResults.skipped.length})
-                      </p>
-                      <ul className="text-xs text-amber-600 space-y-0.5">
-                        {importDbResults.skipped.map(s => <li key={s.name}>{s.name} — {s.reason}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {importDbResults.errors.length > 0 && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-xs font-semibold text-red-700 mb-1 flex items-center gap-1.5">
-                        <AlertTriangle size={14} /> Errors ({importDbResults.errors.length})
-                      </p>
-                      <ul className="text-xs text-red-600 space-y-0.5">
-                        {importDbResults.errors.map((e, i) => <li key={i}>{e}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={resetImportDb}
-                  className="w-full py-2 bg-slate-800 text-white rounded-lg text-sm font-bold hover:bg-slate-700"
-                >
-                  Done
-                </button>
-              </>
-            )}
-
-          </div>
-        </div>
-      )}
 
       {/* Sub-wizards */}
       {activeWizard === 'region' && (

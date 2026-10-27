@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, RefreshCw } from 'lucide-react';
-import { processUploadedFile, UploadedFile, saveFiles, deleteFile, isInUS, assignWellToAquifer, parseCSV, toCsv, WELLS_CSV_HEADERS, freshFetch } from '../../services/importUtils';
+import { processUploadedFile, UploadedFile, saveFiles, deleteFile, isInUS, assignWellToAquifer, parseCSV, toCsv, WELLS_CSV_HEADERS } from '../../services/importUtils';
 import { fetchUSGSWells, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { fetchGseBatch } from '../../services/gseLookup';
 import { compareNames } from '../../utils/strings';
@@ -9,6 +9,7 @@ import { useCrsPicker } from '../../hooks/useCrsPicker';
 import CrsPickerPanel from './CrsPickerPanel';
 import ColumnMapperModal from './ColumnMapperModal';
 import ConfirmDialog from './ConfirmDialog';
+import { listRegions, readJson, readText } from '../../services/dataStore';
 
 interface WellImporterProps {
   regionId: string;
@@ -101,9 +102,8 @@ const WellImporter: React.FC<WellImporterProps> = ({
   useEffect(() => {
     (async () => {
       try {
-        const res = await freshFetch(`/data/${regionId}/wells.csv`);
-        if (res.ok) {
-          const text = await res.text();
+        const text = await readText(`${regionId}/wells.csv`);
+        if (text !== null) {
           const { rows } = parseCSV(text);
           const usgsIds = new Set<string>();
           for (const r of rows) {
@@ -134,9 +134,8 @@ const WellImporter: React.FC<WellImporterProps> = ({
     if (singleUnit) return;
     (async () => {
       try {
-        const res = await freshFetch(`/data/${regionId}/aquifers.geojson`);
-        if (res.ok) {
-          const gj = await res.json();
+        const gj = await readJson(`${regionId}/aquifers.geojson`);
+        if (gj) {
           setAquifersGeojson(gj);
           const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
           const list = features.map((f: any) => ({
@@ -462,10 +461,8 @@ const WellImporter: React.FC<WellImporterProps> = ({
         // Aquifer-scoped: always merge with other aquifers' wells
         let existingRows: Record<string, string>[] = [];
         try {
-          const res = await freshFetch(`/data/${regionId}/wells.csv`);
-          if (res.ok) {
-            existingRows = parseCSV((await res.text())).rows;
-          }
+          const text = await readText(`${regionId}/wells.csv`);
+          if (text !== null) existingRows = parseCSV(text).rows;
         } catch {}
 
         let keptExisting: Record<string, string>[];
@@ -486,10 +483,8 @@ const WellImporter: React.FC<WellImporterProps> = ({
         // Load existing wells, skip duplicates
         let existingRows: Record<string, string>[] = [];
         try {
-          const res = await freshFetch(`/data/${regionId}/wells.csv`);
-          if (res.ok) {
-            existingRows = parseCSV((await res.text())).rows;
-          }
+          const text = await readText(`${regionId}/wells.csv`);
+          if (text !== null) existingRows = parseCSV(text).rows;
         } catch {}
 
         const existingIds = new Set(existingRows.map(r => r.well_id));
@@ -502,14 +497,9 @@ const WellImporter: React.FC<WellImporterProps> = ({
         // Region-wide replace: delete measurements then write
         if (importMode === 'replace' && existingWellCount > 0) {
           try {
-            const regionsRes = await fetch('/api/regions');
-            if (regionsRes.ok) {
-              const all: any[] = await regionsRes.json();
-              const me = all.find((r: any) => r.id === regionId);
-              const dataFiles: string[] = Array.isArray(me?.dataFiles) ? me.dataFiles : [];
-              for (const f of dataFiles) {
-                try { await deleteFile(`${regionId}/${f}`); } catch {}
-              }
+            const me = (await listRegions()).find(r => r.id === regionId);
+            for (const f of me?.dataFiles ?? []) {
+              try { await deleteFile(`${regionId}/${f}`); } catch {}
             }
           } catch {}
         }

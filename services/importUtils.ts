@@ -2,17 +2,6 @@ import shp from 'shpjs';
 import JSZip from 'jszip';
 import { reprojectGeoJSON, reprojectFromWKT } from './reprojection';
 
-/** Fetch with cache-busting to avoid stale browser-cached data after writes.
- *  Also detects Vite SPA fallback (returns index.html for missing files) and treats as 404. */
-export async function freshFetch(url: string): Promise<Response> {
-  const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`);
-  const ct = res.headers.get('content-type') || '';
-  if (res.ok && ct.includes('text/html') && !url.endsWith('.html')) {
-    return new Response(null, { status: 404, statusText: 'Not Found' });
-  }
-  return res;
-}
-
 export interface ColumnMapping {
   [targetColumn: string]: string;
 }
@@ -382,45 +371,10 @@ export async function processUploadedFile(
   throw new Error(`Unsupported file type: ${file.name}`);
 }
 
-// Save files via API
-export interface SaveFileEntry {
-  path: string;
-  content: string;
-  /** Optimistic lock: the Last-Modified header captured when this file was
-   *  read. The save is rejected (409) if the file changed since — e.g. a
-   *  concurrent import in another tab. */
-  ifUnmodifiedSince?: string;
-  /** Optimistic lock for creations: the client read a 404, so the save is
-   *  rejected if the file now exists. */
-  mustNotExist?: boolean;
-}
-
-export async function saveFiles(files: SaveFileEntry[]): Promise<void> {
-  const res = await fetch('/api/save-data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files })
-  });
-  if (res.status === 409) {
-    const body = await res.json().catch(() => ({ conflicts: [] }));
-    const names = (body.conflicts || []).map((p: string) => p.split('/').pop()).join(', ');
-    throw new Error(
-      `The data on disk changed while you were working (${names}) — likely a concurrent import or another tab. ` +
-      `Nothing was saved. Close and re-open this dialog to load the latest data, then try again.`
-    );
-  }
-  if (!res.ok) throw new Error(await res.text());
-}
-
-// Delete a single file via API
-export async function deleteFile(filePath: string): Promise<void> {
-  const res = await fetch('/api/delete-file', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filePath })
-  });
-  if (!res.ok) throw new Error(await res.text());
-}
+// Saving and deleting go through the data store; re-exported here because
+// the importers have always imported them from this module.
+export { saveFiles, deleteFile } from './dataStore';
+export type { SaveEntry as SaveFileEntry } from './dataStore';
 
 // Point-in-polygon using ray casting
 export function pointInPolygon(point: [number, number], polygon: number[][]): boolean {

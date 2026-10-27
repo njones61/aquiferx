@@ -1,3 +1,5 @@
+import type { DataSource } from './services/dataStore';
+
 
 export interface DataType {
   code: string;
@@ -46,6 +48,8 @@ export interface Region {
   effectiveDataTypes: DataType[];
   geojson: any;
   bounds: [number, number, number, number]; // [minLat, minLng, maxLat, maxLng]
+  /** Sample Data ships with the app and is read-only; My Data is the user's own. */
+  source: DataSource;
 }
 
 export interface Aquifer {

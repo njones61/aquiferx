@@ -26,7 +26,7 @@ and a downloaded zip is the backup they restore from. The BYOS / Supabase plans 
 - Map display options (min obs, font, date filter, labels) float over the map; data type and analysis commands sit
   in the top bar; data management is a database icon in the top-right corner.
 
-## Phase 1: storage layer
+## Phase 1: storage layer (done 2026-10-27, with Phase 2)
 
 1. `services/dataStore.ts`: one interface for list regions, read file, write file, delete file/folder, list
    rasters/models, rename. Two implementations:
@@ -45,7 +45,7 @@ and a downloaded zip is the backup they restore from. The BYOS / Supabase plans 
 7. Dev mode uses the same two stores, so dev and production behave identically. The middleware is deleted except
    what Phase 5 moves to a serverless function.
 
-## Phase 2: Sample Data / My Data in the interface
+## Phase 2: Sample Data / My Data in the interface (done 2026-10-27)
 
 - A segmented control at the top of the left panel, styled like GRACE's Regions / Global: **Sample Data | My Data**.
   The tree below lists that set's regions.

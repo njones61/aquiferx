@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, Calendar, MapPin, Wand2, BookOpen, FlaskConical } from 'lucide-react';
-import { processUploadedFile, UploadedFile, saveFiles, SaveFileEntry, parseDate, detectDateFormat, parseCSV, toCsv, WELLS_CSV_HEADERS, isInUS, freshFetch, assignWellToAquifer, DATE_FORMATS } from '../../services/importUtils';
+import { processUploadedFile, UploadedFile, saveFiles, SaveFileEntry, parseDate, detectDateFormat, parseCSV, toCsv, WELLS_CSV_HEADERS, isInUS, assignWellToAquifer, DATE_FORMATS } from '../../services/importUtils';
 import { fetchUSGSMeasurements, validateUSGSMeasurements, USGSDataQualityReport, USGSMeasurement, USGSDataSpan, computeDataSpan, filterByDateRange, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
 import { loadCatalog } from '../../services/catalog';
 import { compareNames } from '../../utils/strings';
@@ -26,6 +26,7 @@ import CrsPickerPanel from './CrsPickerPanel';
 import ColumnMapperModal from './ColumnMapperModal';
 import ConfirmDialog from './ConfirmDialog';
 import { DataType, ParameterCatalog, RegionMeta } from '../../types';
+import { listRegions, readFile, readJson, readText } from '../../services/dataStore';
 import {
   fetchWqpCounts,
   fetchWqpStations,
@@ -164,9 +165,8 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       // Load aquifers geojson (kept for point-in-polygon assignment of new wells,
       // even for single-unit regions we may still have it for display)
       try {
-        const res = await freshFetch(`/data/${regionId}/aquifers.geojson`);
-        if (res.ok) {
-          const gj = await res.json();
+        const gj = await readJson(`${regionId}/aquifers.geojson`);
+        if (gj) {
           setAquifersGeojson(gj);
           if (!singleUnit) {
             const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
@@ -183,9 +183,8 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
 
       // Load wells for aquifer lookup, GSE, and full well records for matching
       try {
-        const res = await freshFetch(`/data/${regionId}/wells.csv`);
-        if (res.ok) {
-          const text = await res.text();
+        const text = await readText(`${regionId}/wells.csv`);
+        if (text !== null) {
           const { rows } = parseCSV(text);
           const aqMap: Record<string, string> = {};
           const gseMap: Record<string, number> = {};
@@ -217,9 +216,8 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         setCatalog(cat);
       } catch {}
       try {
-        const res = await fetch('/api/regions');
-        if (res.ok) {
-          const all: any[] = await res.json();
+        {
+          const all: any[] = await listRegions();
           const types: DataType[] = [];
           const seen = new Set<string>();
           for (const r of all) {
@@ -246,9 +244,8 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       const counts: Record<string, number> = {};
       for (const dt of dataTypes) {
         try {
-          const res = await freshFetch(`/data/${regionId}/data_${dt.code}.csv`);
-          if (res.ok) {
-            const text = await res.text();
+          const text = await readText(`${regionId}/data_${dt.code}.csv`);
+          if (text !== null) {
             counts[dt.code] = Math.max(0, text.split('\n').filter(l => l.trim()).length - 1);
           }
         } catch {}
@@ -538,9 +535,8 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
     setUsgsProgress({ completed: 0, total: 0, done: false });
     try {
       // Get well IDs from wells.csv
-      const wellRes = await freshFetch(`/data/${regionId}/wells.csv`);
-      if (!wellRes.ok) throw new Error('No wells found. Import wells first.');
-      const wellText = await wellRes.text();
+      const wellText = await readText(`${regionId}/wells.csv`);
+      if (wellText === null) throw new Error('No wells found. Import wells first.');
       const { rows: wellRows } = parseCSV(wellText);
       const wellIds = wellRows
         .filter(r => usgsScope === 'aquifer' ? r.aquifer_id === usgsScopeAquiferId : true)
@@ -607,9 +603,8 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       if (usgsMode === 'quick-refresh') {
         // Find max existing date for USGS wells
         try {
-          const dataRes = await freshFetch(`/data/${regionId}/data_wte.csv`);
-          if (dataRes.ok) {
-            const dataText = await dataRes.text();
+          const dataText = await readText(`${regionId}/data_wte.csv`);
+          if (dataText !== null) {
             const { rows: dataRows } = parseCSV(dataText);
             const usgsDateSet = new Set(Object.values(apiToWellId));
             const usgsRows = dataRows.filter(r => usgsDateSet.has(r.well_id));
@@ -1197,7 +1192,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         // always single-type wte, so the usgsMode cases never apply to a
         // multi-type import. Merged saves carry an optimistic-lock
         // precondition; intentional overwrites (fresh+replace) don't.
-        let precondition: { ifUnmodifiedSince?: string; mustNotExist?: boolean } = {};
+        let precondition: { ifVersion?: number; mustNotExist?: boolean } = {};
         const mergeMode: 'append' | 'full-refresh' | null =
           dataSource === 'usgs'
             ? (usgsMode === 'fresh' && importMode === 'replace' ? null : usgsMode === 'full-refresh' ? 'full-refresh' : 'append')
@@ -1205,7 +1200,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         if (mergeMode) {
           const merged = await mergeTypeWithExisting(typeCode, processed, mergeMode);
           processed = merged.rows;
-          precondition = { ifUnmodifiedSince: merged.ifUnmodifiedSince, mustNotExist: merged.mustNotExist };
+          precondition = { ifVersion: merged.ifVersion, mustNotExist: merged.mustNotExist };
         }
 
         filesToSave.push({
@@ -1229,12 +1224,12 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       // --- Persist new wells (if any) by appending to wells.csv ---
       if (newWellRecords.length > 0) {
         let existingRows: Record<string, string>[] = [];
-        let wellsPrecondition: { ifUnmodifiedSince?: string; mustNotExist?: boolean } = { mustNotExist: true };
+        let wellsPrecondition: { ifVersion?: number; mustNotExist?: boolean } = { mustNotExist: true };
         try {
-          const res = await freshFetch(`/data/${regionId}/wells.csv`);
-          if (res.ok) {
-            wellsPrecondition = { ifUnmodifiedSince: res.headers.get('last-modified') || undefined };
-            existingRows = parseCSV(await res.text()).rows;
+          const file = await readFile(`${regionId}/wells.csv`);
+          if (file) {
+            wellsPrecondition = { ifVersion: file.version };
+            existingRows = parseCSV(file.text).rows;
           }
         } catch {
           wellsPrecondition = {};
@@ -1289,23 +1284,22 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   // Fetch the existing data file (if any) and merge per the given mode —
   // the merge math itself lives in services/measurementImport. Also
   // returns the optimistic-lock precondition for the save: the file's
-  // Last-Modified as read, or mustNotExist when there was no file, so a
+  // version as read, or mustNotExist when there was no file, so a
   // concurrent import in another tab can't be silently overwritten.
   const mergeTypeWithExisting = async (
     typeCode: string,
     newRows: MeasurementRow[],
     mode: 'append' | 'full-refresh'
-  ): Promise<{ rows: MeasurementRow[]; ifUnmodifiedSince?: string; mustNotExist?: boolean }> => {
+  ): Promise<{ rows: MeasurementRow[]; ifVersion?: number; mustNotExist?: boolean }> => {
     try {
-      const res = await freshFetch(`/data/${regionId}/data_${typeCode}.csv`);
-      if (res.ok) {
-        const ifUnmodifiedSince = res.headers.get('last-modified') || undefined;
-        const { rows: existingRows } = parseCSV(await res.text());
+      const file = await readFile(`${regionId}/data_${typeCode}.csv`);
+      if (file) {
+        const { rows: existingRows } = parseCSV(file.text);
         return {
           rows: mode === 'append'
             ? mergeAppend(existingRows, newRows)
             : mergeFullRefresh(existingRows, newRows),
-          ifUnmodifiedSince,
+          ifVersion: file.version,
         };
       }
       return { rows: newRows, mustNotExist: true };

@@ -197,6 +197,41 @@
   transition: 0.12s;
 }
 
+/* Two-way switch at the top of the panel (Sample Data | My Data), drawn the
+   way GRACE draws its dataset toggle: one bordered strip, the chosen half
+   filled with the accent. */
+.rfs-seg {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.rfs-seg button {
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg);
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.rfs-seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.rfs-seg button:hover:not(.active) {
+  color: var(--text);
+}
+
+.rfs-seg button.active {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
 .rfs-btn.icon {
   width: var(--size);
   height: var(--size);
