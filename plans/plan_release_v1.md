@@ -107,7 +107,10 @@ USGS water levels finding their own wells, a well list with delete.
 
 - Vite `base` for the deploy path, `vercel.json` as in GRACE.
 - WQP called directly; progress uses row counts from the response instead of the hidden count headers.
-- GLDAS through a Vercel serverless function (`api/gldas.ts`), unless the THREDDS server can send CORS headers.
+- Imputation reads soil moisture from a zarr store on cdn.apps.geoglows.org with zarrita, as the GRACE app does
+  (CORS is open, chunks are [all time, 50, 50], so a point is one request). The current THREDDS source is NOAA CPC
+  soil moisture v2 (1948 on), while the GRACE stores begin in 2002, so the choice of store is still open; see the
+  note of 2026-10-27 below.
 - Remove the esm.sh importmap and unpkg Leaflet CSS left in `index.html` from the original scaffold.
 - Push to the geoglows org repo; development continues there after the fork.
 
@@ -115,3 +118,14 @@ USGS water levels finding their own wells, a well list with delete.
 
 Start over on training.geoglows.org in the GRACE pattern (Parts, en/es/fr, screenshots via a `shots.mjs`-style
 script). The current `docs/` and `mkdocs.yml` here are retired.
+
+## Note: soil moisture source for imputation (2026-10-27)
+
+`services/gldasFetch.ts` asks THREDDS for `soilw.mon.mean.v2.nc`, whose CSV header ("Model-Calculated Monthly Mean
+Soil Moisture (mm)") is NOAA CPC Soil Moisture v2: 0.5°, monthly, 1948 on. The pipeline builds 1/3/5/10-year
+rolling means and drops the first ten years, so features start about 1958 and wells with records back to the 1960s
+can be imputed.
+
+The GRACE stores hold soil moisture anomalies (`SMa` at 1.0° from 2002, `SMa_22` at 0.25° from 2003). Anomalies
+work for the ELM because every feature is z-scored, but with a 2002 start the 10-year mean leaves features from
+2012 on, which cuts most historic records out.
