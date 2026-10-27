@@ -1,6 +1,24 @@
+import * as zarr from 'zarrita';
 import { interpolatePCHIP } from '../utils/interpolation';
 
-const GLDAS_WMS_URL = 'https://legacy-apps.geoglows.org/thredds/wms/geoglows_data/soilw.mon.mean.v2.nc';
+// Monthly soil moisture from NOAA CPC v2 (0.5 degree, 1948 on), published as a
+// zarr store by scripts/soil_moisture_store.py. The names below still say GLDAS
+// because the imputation pipeline and its saved models do; the record itself
+// is CPC's, as it was when this read a THREDDS server.
+//
+// A /local-zarr/ URL only exists on the dev server, so a production build that
+// still carries one would fail every read; fall back to the published store.
+const PUBLISHED_URL = 'https://cdn.apps.geoglows.org/aqx/cpc-soil-moisture-0.5-v1.zarr';
+const configuredUrl = (import.meta.env.VITE_SOIL_MOISTURE_URL || '').trim();
+const SOIL_MOISTURE_URL = (
+  !configuredUrl || (import.meta.env.PROD && configuredUrl.startsWith('/local-zarr/'))
+    ? PUBLISHED_URL
+    : configuredUrl
+).replace(/\/+$/, '');
+
+// The time coordinate counts days from this date (see the script's attributes)
+const TIME_EPOCH_MS = Date.UTC(1948, 0, 1);
+const DAY_MS = 86400000;
 
 export interface GldasFeatures {
   dates: string[];    // ISO date strings, monthly
@@ -16,39 +34,94 @@ export interface GldasFeatures {
 // regions (single-unit regions all use aquifer_id=0).
 const gldasCache = new Map<string, { features: GldasFeatures; range: { min: string; max: string } }>();
 
-/**
- * Fetch GLDAS date range via GetCapabilities XML.
- * The time dimension is a mix of comma-separated dates and start/end/period ranges.
- * Matches notebook's get_time_bounds: split by comma, take first and last entries,
- * then split the last entry by "/" to get the actual end date.
- */
+// Chunks that are entirely ocean were never written. The CDN answers those
+// with 403 rather than 404, so both read as "missing", which zarrita fills
+// with NaN.
+const storeGet = async (key: string): Promise<Uint8Array | undefined> => {
+  const res = await fetch(`${SOIL_MOISTURE_URL}${key}`, { signal: AbortSignal.timeout(30000) });
+  if (res.status === 404 || res.status === 403) return undefined;
+  if (!res.ok) throw new Error(`Soil moisture store returned ${res.status} for ${key}`);
+  return new Uint8Array(await res.arrayBuffer());
+};
+
+interface SoilMoistureGrid {
+  soilw: zarr.Array<'float32', any>;
+  dates: string[];
+  lats: Float32Array;
+  lons: Float32Array;
+}
+
+let gridPromise: Promise<SoilMoistureGrid> | null = null;
+
+/** Open the store once per session; a failed open is retried on the next call. */
+function openGrid(): Promise<SoilMoistureGrid> {
+  if (!gridPromise) {
+    gridPromise = (async () => {
+      const root = zarr.root({ get: storeGet });
+      const [soilw, time, lat, lon] = await Promise.all([
+        zarr.open.v3(root.resolve('soilw'), { kind: 'array' }),
+        zarr.open.v3(root.resolve('time'), { kind: 'array' }),
+        zarr.open.v3(root.resolve('lat'), { kind: 'array' }),
+        zarr.open.v3(root.resolve('lon'), { kind: 'array' }),
+      ]).catch(err => {
+        // zarrita reports a store it cannot find as "Node not found"
+        throw new Error(`Soil moisture store unavailable at ${SOIL_MOISTURE_URL} (${err.message})`);
+      });
+      const [t, la, lo] = await Promise.all([zarr.get(time), zarr.get(lat), zarr.get(lon)]);
+      const dates = Array.from(t.data as Int32Array, days =>
+        new Date(TIME_EPOCH_MS + days * DAY_MS).toISOString().slice(0, 10));
+      return {
+        soilw: soilw as zarr.Array<'float32', any>,
+        dates,
+        lats: la.data as Float32Array,
+        lons: lo.data as Float32Array,
+      };
+    })();
+    gridPromise.catch(() => { gridPromise = null; });
+  }
+  return gridPromise;
+}
+
+/** First and last month in the soil moisture record. */
 export async function fetchGldasDateRange(): Promise<{ min: string; max: string }> {
-  const capUrl = `${GLDAS_WMS_URL}?service=WMS&version=1.3.0&request=GetCapabilities`;
-  const proxyUrl = `/api/gldas-proxy?url=${encodeURIComponent(capUrl)}`;
+  const { dates } = await openGrid();
+  return { min: dates[0], max: dates[dates.length - 1] };
+}
 
-  const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error(`GLDAS GetCapabilities failed: ${res.status}`);
+const nearestIndex = (coords: Float32Array, value: number): number => {
+  const step = coords[1] - coords[0];
+  return Math.min(coords.length - 1, Math.max(0, Math.round((value - coords[0]) / step)));
+};
 
-  const xml = await res.text();
-
-  // Parse time dimension from XML
-  const timeMatch = xml.match(/<Dimension[^>]*name="time"[^>]*>([\s\S]*?)<\/Dimension>/i)
-    || xml.match(/<Extent[^>]*name="time"[^>]*>([\s\S]*?)<\/Extent>/i);
-  if (!timeMatch) throw new Error('Could not parse GLDAS time dimension from GetCapabilities');
-
-  const content = timeMatch[1].trim();
-  // Split by comma first (entries are either individual dates or start/end/period ranges)
-  const entries = content.split(',').map(s => s.trim()).filter(Boolean);
-  if (entries.length === 0) throw new Error('Empty GLDAS time dimension');
-
-  // First entry: may be a date or a range — take the first date part
-  const minStr = entries[0].split('/')[0].trim().slice(0, 10);
-
-  // Last entry: may be a "start/end/period" range — take the end (index 1) if available
-  const lastParts = entries[entries.length - 1].split('/');
-  const maxStr = (lastParts.length >= 2 ? lastParts[1] : lastParts[0]).trim().slice(0, 10);
-
-  return { min: minStr, max: maxStr };
+/**
+ * The whole record at the cell nearest (lat, lng). A centroid on a coast or a
+ * small island can land on a cell CPC leaves empty as ocean, so the search
+ * widens one ring at a time, up to three cells (about 150 km), and takes the
+ * closest cell that has data.
+ */
+async function readCellSeries(lat: number, lng: number): Promise<{ values: Float32Array; lat: number; lng: number }> {
+  const { soilw, lats, lons } = await openGrid();
+  const i0 = nearestIndex(lats, lat);
+  const j0 = nearestIndex(lons, lng);
+  for (let ring = 0; ring <= 3; ring++) {
+    const candidates: [number, number][] = [];
+    for (let di = -ring; di <= ring; di++) {
+      for (let dj = -ring; dj <= ring; dj++) {
+        if (Math.max(Math.abs(di), Math.abs(dj)) !== ring) continue;
+        const i = i0 + di;
+        const j = (j0 + dj + lons.length) % lons.length;
+        if (i >= 0 && i < lats.length) candidates.push([i, j]);
+      }
+    }
+    candidates.sort(([ia, ja], [ib, jb]) =>
+      Math.hypot(lats[ia] - lat, lons[ja] - lng) - Math.hypot(lats[ib] - lat, lons[jb] - lng));
+    for (const [i, j] of candidates) {
+      const cell = await zarr.get(soilw, [null, i, j]);
+      const values = cell.data as Float32Array;
+      if (values.some(v => !isNaN(v))) return { values, lat: lats[i], lng: lons[j] };
+    }
+  }
+  throw new Error(`No soil moisture data within 150 km of the aquifer center (${lat.toFixed(3)}, ${lng.toFixed(3)})`);
 }
 
 /**
@@ -149,58 +222,21 @@ export async function fetchGldasFeatures(
   }
 
   const [lat, lng] = computeAquiferCentroid(aquiferGeojson);
+  const { dates } = await openGrid();
+  const cell = await readCellSeries(lat, lng);
 
-  // Build WMS GetTimeseries request — match notebook's get_thredds_value format
-  const delta = 0.125; // half of GLDAS 0.25° grid cell
-  const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
-
-  const timeseriesUrl = `${GLDAS_WMS_URL}?service=WMS&version=1.3.0&request=GetTimeseries` +
-    `&CRS=CRS:84&QUERY_LAYERS=soilw` +
-    `&X=0&Y=0&I=0&J=0` +
-    `&BBOX=${bbox}` +
-    `&LAYER=soilw` +
-    `&WIDTH=1&HEIGHT=1` +
-    `&INFO_FORMAT=text/csv` +
-    `&STYLES=raster/default` +
-    `&TIME=${startDate}T00:00:00.000Z/${endDate}T00:00:00.000Z`;
-
-  const proxyUrl = `/api/gldas-proxy?url=${encodeURIComponent(timeseriesUrl)}`;
-  const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error(`GLDAS GetTimeseries failed: ${res.status}`);
-
-  const csvText = await res.text();
-  if (!csvText.trim()) throw new Error('GLDAS returned empty response');
-
-  // Parse CSV — notebook skips first 2 lines (comment lines starting with #),
-  // then header: "Time (UTC),Model-Calculated Monthly Mean Soil Moisture (mm)"
-  // then data: "1974-01-01T00:00:00.000Z,567.956"
-  const lines = csvText.trim().split('\n');
-  const rawDates: string[] = [];
-  const rawValues: number[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    // Skip comment lines (# ...) and header lines
-    if (!line || line.startsWith('#') || line.startsWith('Time')) continue;
-    const parts = line.split(',');
-    if (parts.length < 2) continue;
-    const dateStr = parts[0].trim().slice(0, 10);
-    const valStr = parts[parts.length - 1].trim();
-    // Handle "none" values like the notebook does
-    if (valStr === 'none' || valStr === '') continue;
-    const value = parseFloat(valStr);
-    if (dateStr && !isNaN(new Date(dateStr).getTime()) && !isNaN(value)) {
-      rawDates.push(dateStr);
-      rawValues.push(value);
-    }
+  // Months CPC has no value for are skipped here and filled by PCHIP below,
+  // as the "none" rows of the THREDDS CSV were
+  const sortedDates: string[] = [];
+  const sortedValues: number[] = [];
+  for (let k = 0; k < dates.length; k++) {
+    if (dates[k] < startDate || dates[k] > endDate) continue;
+    const v = cell.values[k];
+    if (isNaN(v)) continue;
+    sortedDates.push(dates[k]);
+    sortedValues.push(v);
   }
-
-  if (rawDates.length === 0) throw new Error('No valid GLDAS data parsed from response');
-
-  // Sort by date
-  const indices = rawDates.map((_, i) => i).sort((a, b) => rawDates[a].localeCompare(rawDates[b]));
-  const sortedDates = indices.map(i => rawDates[i]);
-  const sortedValues = indices.map(i => rawValues[i]);
+  if (sortedDates.length === 0) throw new Error(`No soil moisture data between ${startDate} and ${endDate}`);
 
   // PCHIP interpolate any internal gaps, then resample to monthly
   const monthlyDates = generateMonthlyDates(sortedDates[0], sortedDates[sortedDates.length - 1]);

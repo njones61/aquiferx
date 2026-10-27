@@ -10,6 +10,7 @@ and a downloaded zip is the backup they restore from. The BYOS / Supabase plans 
 - Sample Data: Utah, Oregon, Arizona (about 97 MB, fetched per region on demand).
 - My Data persists in IndexedDB between visits; the zip is the backup.
 - Order: storage first (Phases 1–2), then theme and layout, then import cleanup.
+- Imputation keeps the CPC v2 record from 1948, published as a zarr store beside the GRACE ones.
 
 ## Current state that drives the work
 
@@ -107,10 +108,9 @@ USGS water levels finding their own wells, a well list with delete.
 
 - Vite `base` for the deploy path, `vercel.json` as in GRACE.
 - WQP called directly; progress uses row counts from the response instead of the hidden count headers.
-- Imputation reads soil moisture from a zarr store on cdn.apps.geoglows.org with zarrita, as the GRACE app does
-  (CORS is open, chunks are [all time, 50, 50], so a point is one request). The current THREDDS source is NOAA CPC
-  soil moisture v2 (1948 on), while the GRACE stores begin in 2002, so the choice of store is still open; see the
-  note of 2026-10-27 below.
+- Imputation reads CPC soil moisture v2 (1948 on) from `cdn.apps.geoglows.org/aqx/cpc-soil-moisture-0.5-v1.zarr`,
+  built by `scripts/soil_moisture_store.py` and read with zarrita (done 2026-10-27; the THREDDS proxy is gone).
+  Rebuild monthly-ish to a new `-vN` prefix and bump `VITE_SOIL_MOISTURE_URL`.
 - Remove the esm.sh importmap and unpkg Leaflet CSS left in `index.html` from the original scaffold.
 - Push to the geoglows org repo; development continues there after the fork.
 

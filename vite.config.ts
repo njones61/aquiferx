@@ -310,7 +310,6 @@ function saveDataPlugin(): Plugin {
         }
       });
 
-      // GET /api/gldas-proxy?url={encodedUrl} — proxy GLDAS THREDDS requests for CORS
       // Proxy for the Water Quality Portal. WQP doesn't send
       // Access-Control-Expose-Headers, so the browser hides count
       // headers (Total-Result-Count, Total-Site-Count, etc.) from JS
@@ -366,45 +365,6 @@ function saveDataPlugin(): Plugin {
           } catch (fetchErr: any) {
             res.statusCode = 502;
             res.end(`WQP proxy error: ${fetchErr.message || fetchErr}`);
-          } finally {
-            clearTimeout(timeout);
-          }
-        } catch (err) {
-          res.statusCode = 500;
-          res.end(String(err));
-        }
-      });
-
-      server.middlewares.use('/api/gldas-proxy', async (req, res) => {
-        if (req.method !== 'GET') {
-          res.statusCode = 405;
-          res.end('Method not allowed');
-          return;
-        }
-        try {
-          const url = new URL(req.url || '', 'http://localhost');
-          const targetUrl = url.searchParams.get('url');
-          // Whitelist the GLDAS THREDDS host — an open proxy would let
-          // anyone who can reach this dev server fetch arbitrary URLs
-          // through it
-          if (!targetUrl || !targetUrl.startsWith('https://legacy-apps.geoglows.org/')) {
-            res.statusCode = 400;
-            res.end('Missing or non-GLDAS url parameter');
-            return;
-          }
-          const controller = new AbortController();
-          // Timer covers headers + body (see wqp-proxy note above)
-          const timeout = setTimeout(() => controller.abort(), 15000);
-          try {
-            const response = await fetch(targetUrl, { signal: controller.signal });
-            const contentType = response.headers.get('content-type') || 'text/plain';
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            const body = await response.text();
-            res.end(body);
-          } catch (fetchErr: any) {
-            res.statusCode = 502;
-            res.end(`GLDAS proxy error: ${fetchErr.message || fetchErr}`);
           } finally {
             clearTimeout(timeout);
           }
@@ -543,6 +503,48 @@ function saveDataPlugin(): Plugin {
   };
 }
 
+// Serves LOCAL_ZARR_DIR at /local-zarr/ from the dev server only, so a store
+// can be previewed before it is published. A production build pointed at one
+// of these URLs drops the setting instead (see services/gldasFetch.ts).
+function serveLocalZarr(dir: string): Plugin {
+  return {
+    name: 'serve-local-zarr',
+    apply: 'serve',
+    configureServer(server) {
+      const root = path.resolve(dir.replace(/^~(?=\/)/, process.env.HOME || '~'));
+      if (!fs.existsSync(root)) {
+        server.config.logger.warn(`[local-zarr] LOCAL_ZARR_DIR does not exist: ${root}`);
+        return;
+      }
+      server.config.logger.info(`[local-zarr] serving ${root} at /local-zarr/`);
+      server.middlewares.use('/local-zarr', (req, res, next) => {
+        // connect strips the prefix, so req.url is the store-relative path
+        const rel = decodeURIComponent((req.url ?? '').split('?')[0]).replace(/^\/+/, '');
+        const file = path.resolve(root, rel);
+        if (file !== root && !file.startsWith(root + path.sep)) {
+          res.statusCode = 403;
+          res.end();
+          return;
+        }
+        let stat: fs.Stats;
+        try {
+          stat = fs.statSync(file);
+        } catch {
+          // A chunk that was never written is all fill value, as on the CDN
+          res.statusCode = 404;
+          res.end();
+          return;
+        }
+        if (!stat.isFile()) return next();
+        res.setHeader('Content-Type', file.endsWith('.json') ? 'application/json' : 'application/octet-stream');
+        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Cache-Control', 'no-store');
+        fs.createReadStream(file).pipe(res);
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
@@ -550,7 +552,7 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
-      plugins: [react(), saveDataPlugin()],
+      plugins: [react(), saveDataPlugin(), ...(env.LOCAL_ZARR_DIR ? [serveLocalZarr(env.LOCAL_ZARR_DIR)] : [])],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
