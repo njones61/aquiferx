@@ -74,6 +74,10 @@ grid, "Wells with at least N measurements" and "Measured in YYYY to YYYY". Label
 also shows the site's storage use and offers "Delete all My Data". Map display choices persist in localStorage
 (`aqx-map-display`), except the date filter. The top bar lost the data type select and the Manage Data button.
 
+Revised the same day (aaceefb) because the order read badly: Settings is a gear in the header and holds Light
+mode; Add Data / Back up / Restore show only on My Data; the region tree comes next; the open region's options
+(data type when it has more than one, Show on map, Filter wells) sit below the tree.
+
 
 Left panel, top to bottom:
 1. GEOGLOWS wordmark, sign-in, app title (drop "v1").
