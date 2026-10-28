@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, CheckCircle2, Loader2, AlertTriangle, Download, Upload, RefreshCw } from 'lucide-react';
 import { processUploadedFile, UploadedFile, saveFiles, deleteFile, isInUS, assignWellToAquifer, parseCSV, toCsv, WELLS_CSV_HEADERS } from '../../services/importUtils';
 import { fetchUSGSWells, getUSGSApiKey, setUSGSApiKey } from '../../services/usgsApi';
@@ -46,7 +46,11 @@ const WellImporter: React.FC<WellImporterProps> = ({
   const [aquiferList, setAquiferList] = useState<{ id: string; name: string }[]>([]);
   const [aquifersGeojson, setAquifersGeojson] = useState<any>(null);
 
-  // GSE interpolation
+  // Ground surface elevation lookup, for a file without a GSE column. It
+  // runs by itself once the well ID and coordinates are mapped, and Save
+  // doesn't wait for it: wells without a value are saved with a blank one.
+  const gseRunRef = useRef(0);
+  const [gseError, setGseError] = useState('');
   const [gseValues, setGseValues] = useState<Map<string, number>>(new Map());
   const [gseInterpolated, setGseInterpolated] = useState(false);
   const [gseProgress, setGseProgress] = useState({ current: 0, total: 0 });
@@ -368,7 +372,10 @@ const WellImporter: React.FC<WellImporterProps> = ({
 
   const interpolateGSE = async () => {
     if (!file) return;
+    const run = ++gseRunRef.current;
     setGseIsRunning(true);
+    setGseInterpolated(false);
+    setGseError('');
     setGseValues(new Map());
 
     const wellIdCol = file.mapping['well_id'];
@@ -387,21 +394,38 @@ const WellImporter: React.FC<WellImporterProps> = ({
 
     setGseProgress({ current: 0, total: wells.length });
     const allInUS = wells.every(w => isInUS(w.lat, w.lng));
-    setGseSource(allInUS ? 'USGS 3DEP (~10m resolution)' : 'Open-Meteo Copernicus DEM (~90m resolution)');
+    setGseSource(allInUS ? 'USGS 3DEP (~10 m)' : 'Copernicus DEM via Open-Meteo (~90 m)');
 
     try {
       const { values } = await fetchGseBatch(wells, {
         lengthUnit,
-        onProgress: (current, total) => setGseProgress({ current, total }),
+        onProgress: (current, total) => { if (run === gseRunRef.current) setGseProgress({ current, total }); },
       });
+      if (run !== gseRunRef.current) return;
       setGseValues(values);
       setGseInterpolated(true);
     } catch (err) {
-      setError(`GSE interpolation failed: ${err}`);
+      if (run === gseRunRef.current) setGseError(String(err instanceof Error ? err.message : err));
     } finally {
-      setGseIsRunning(false);
+      if (run === gseRunRef.current) setGseIsRunning(false);
     }
   };
+
+  // Look up again whenever what the lookup depends on changes; a run whose
+  // inputs are stale is ignored when it returns
+  const gseKey = needsGseInterpolation && file && file.mapping['well_id'] && file.mapping['lat'] && file.mapping['long'] &&
+    crs.crsPreview?.ok !== false
+    ? [file.name, file.mapping['well_id'], file.mapping['lat'], file.mapping['long'], crs.coordinateCrs].join('|')
+    : '';
+  useEffect(() => {
+    if (!gseKey) {
+      gseRunRef.current++;
+      setGseIsRunning(false);
+      return;
+    }
+    const t = setTimeout(interpolateGSE, 400);
+    return () => clearTimeout(t);
+  }, [gseKey]);
 
   const resolveAquiferId = (row: Record<string, string>): string => {
     if (singleUnit) return '0';
@@ -523,7 +547,6 @@ const WellImporter: React.FC<WellImporterProps> = ({
   };
 
   const isReady = file && file.mapping['well_id'] && file.mapping['lat'] && file.mapping['long'] &&
-    (!needsGseInterpolation || gseInterpolated) &&
     (singleUnit || aquiferAssignment !== 'single' || selectedAquiferId);
 
   return (
@@ -781,31 +804,52 @@ const WellImporter: React.FC<WellImporterProps> = ({
           </div>
         )}
 
-        {/* GSE interpolation */}
-        {needsGseInterpolation && file && (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mb-4">
-            <p className="text-sm text-amber-800 mb-3">
-              No GSE column mapped. Ground Surface Elevation will be estimated from a DEM.
-            </p>
-            {gseSource && <p className="text-xs text-slate-600 mb-2">Source: {gseSource}</p>}
-            {!gseIsRunning && !gseInterpolated && (
-              <button onClick={interpolateGSE} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-                Start GSE Interpolation
-              </button>
-            )}
-            {gseIsRunning && (
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Loader2 size={14} className="animate-spin" />
-                Fetching: {gseProgress.current} / {gseProgress.total}
-              </div>
-            )}
-            {gseInterpolated && (
-              <div className="flex items-center gap-2 text-sm text-green-700">
-                <CheckCircle2 size={16} /> GSE interpolated for {gseValues.size} wells
-              </div>
-            )}
-          </div>
-        )}
+        {/* Ground surface elevation lookup */}
+        {needsGseInterpolation && file && (() => {
+          const missing = gseProgress.total - gseValues.size;
+          return (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg mb-4 text-sm text-slate-600">
+              <p className="font-medium text-slate-700 mb-1">Ground surface elevation (GSE)</p>
+              {!gseKey && !gseIsRunning && (
+                <p className="text-xs">
+                  The file has no GSE column, so it will be looked up from an elevation model once the well ID and
+                  coordinates are mapped{crs.crsPreview?.ok === false ? ' and the coordinates land inside the region' : ''}.
+                </p>
+              )}
+              {gseIsRunning && (
+                <p className="text-xs flex items-center gap-2">
+                  <Loader2 size={12} className="animate-spin shrink-0" />
+                  Looking up from {gseSource}: {gseProgress.current} / {gseProgress.total}. You can save now; wells
+                  not looked up yet are saved without an elevation.
+                </p>
+              )}
+              {gseInterpolated && !gseIsRunning && (
+                <>
+                  <p className="text-xs flex items-center gap-2 text-green-700">
+                    <CheckCircle2 size={14} className="shrink-0" /> Found for {gseValues.size} well{gseValues.size === 1 ? '' : 's'}, from {gseSource}.
+                  </p>
+                  {missing > 0 && (
+                    <p className="text-xs flex items-center gap-2 mt-1 text-amber-700">
+                      <AlertTriangle size={14} className="shrink-0" />
+                      {missing} well{missing === 1 ? '' : 's'} got no elevation and will be saved without one.
+                    </p>
+                  )}
+                </>
+              )}
+              {gseError && !gseIsRunning && (
+                <div className="text-xs text-amber-700">
+                  <p className="flex items-center gap-2">
+                    <AlertTriangle size={14} className="shrink-0" />
+                    The lookup failed ({gseError}). Wells will be saved without an elevation.
+                  </p>
+                  <button onClick={interpolateGSE} className="mt-2 inline-flex items-center gap-1 text-blue-700 hover:text-blue-900 font-medium">
+                    <RefreshCw size={12} /> Try again
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
