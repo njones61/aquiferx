@@ -16,7 +16,7 @@ const RegionImporter: React.FC<RegionImporterProps> = ({ existingRegionIds, onCo
   // Create mode state
   const [regionName, setRegionName] = useState('');
   const [lengthUnit, setLengthUnit] = useState<'ft' | 'm'>('ft');
-  const [singleUnit, setSingleUnit] = useState(false);
+  const [singleUnit, setSingleUnit] = useState(true);
   const [boundaryFile, setBoundaryFile] = useState<UploadedFile | null>(null);
   const [nameError, setNameError] = useState('');
 
@@ -146,7 +146,10 @@ const RegionImporter: React.FC<RegionImporterProps> = ({ existingRegionIds, onCo
                 <input type="checkbox" checked={singleUnit} onChange={e => setSingleUnit(e.target.checked)} className="w-4 h-4 accent-blue-600" />
                 <div>
                   <span className="text-sm font-medium text-slate-700">Single-unit region</span>
-                  <p className="text-xs text-slate-500">Treat entire region as one analysis unit (no aquifer subdivisions)</p>
+                  <p className="text-xs text-slate-500">
+                    The whole region is one unit. Turn this off to add aquifer outlines inside the region. You can
+                    change it later from the region's Edit menu, until the region has wells.
+                  </p>
                 </div>
               </label>
             </div>

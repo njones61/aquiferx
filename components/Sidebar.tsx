@@ -22,7 +22,9 @@ interface SidebarProps {
   setSelectedAquifer: (a: Aquifer | null) => void;
   visibleRegionIds: Set<string>;
   onToggleRegionVisibility: (id: string) => void;
-  onEditRegion: (id: string, newName: string, lengthUnit: 'ft' | 'm') => void;
+  onEditRegion: (id: string, newName: string, lengthUnit: 'ft' | 'm', singleUnit: boolean) => void;
+  /** Regions with wells, whose unit and single-unit setting can no longer change. */
+  regionsWithWells: Set<string>;
   onDownloadRegion: (id: string) => void;
   onDeleteRegion: (id: string) => void | Promise<void>;
   onRenameAquifer: (id: string, newName: string) => void;
@@ -86,6 +88,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   visibleRegionIds,
   onToggleRegionVisibility,
   onEditRegion,
+  regionsWithWells,
   onDownloadRegion,
   onDeleteRegion,
   onRenameAquifer,
@@ -128,6 +131,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editUnit, setEditUnit] = useState<'ft' | 'm'>('ft');
+  const [editSingle, setEditSingle] = useState(false);
 
 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -312,6 +316,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     setEditing(`region-${id}`);
     setEditValue(region.name);
     setEditUnit(region.lengthUnit);
+    setEditSingle(region.singleUnit);
   };
 
   const startEditAquifer = (id: string, currentName: string) => {
@@ -324,8 +329,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     const trimmed = editValue.trim();
     if (trimmed) {
       const region = regions.find(r => r.id === id);
-      if (trimmed !== region?.name || editUnit !== region?.lengthUnit) {
-        onEditRegion(id, trimmed, editUnit);
+      if (trimmed !== region?.name || editUnit !== region?.lengthUnit || editSingle !== region?.singleUnit) {
+        onEditRegion(id, trimmed, editUnit, editSingle);
       }
     }
     setEditing(null);
@@ -1313,6 +1318,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Edit Region Modal */}
       {editing && editing.startsWith('region-') && (() => {
         const regionId = editing.replace('region-', '');
+        const region = regions.find(r => r.id === regionId);
+        const locked = regionsWithWells.has(regionId);
+        const regionAquiferCount = allAquifers.filter(a => a.regionId === regionId).length;
         return (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
             <div ref={editModalRef} className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
@@ -1332,32 +1340,47 @@ const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Length Unit</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Length unit</label>
                   <div className="flex space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditUnit('ft')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        editUnit === 'ft'
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      Feet (ft)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditUnit('m')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        editUnit === 'm'
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      Meters (m)
-                    </button>
+                    {(['ft', 'm'] as const).map(u => (
+                      <button
+                        key={u}
+                        type="button"
+                        disabled={locked}
+                        onClick={() => setEditUnit(u)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:cursor-not-allowed ${
+                          editUnit === u
+                            ? 'bg-blue-600 text-white border-blue-600 disabled:opacity-60'
+                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white'
+                        }`}
+                      >
+                        {u === 'ft' ? 'Feet (ft)' : 'Meters (m)'}
+                      </button>
+                    ))}
                   </div>
                 </div>
+                <label className={`flex items-start gap-3 ${locked ? 'opacity-50' : 'cursor-pointer'}`}>
+                  <input
+                    type="checkbox"
+                    className="rfs-check w-4 h-4 mt-0.5"
+                    checked={editSingle}
+                    disabled={locked}
+                    onChange={e => setEditSingle(e.target.checked)}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-slate-700">Single-unit region</span>
+                    <span className="block text-xs text-slate-500">
+                      The whole region is one unit, with no aquifers inside it.
+                      {!locked && editSingle && !region?.singleUnit && regionAquiferCount > 0 &&
+                        ` Its ${regionAquiferCount} aquifer${regionAquiferCount === 1 ? '' : 's'} will be removed.`}
+                    </span>
+                  </span>
+                </label>
+                {locked && (
+                  <p className="text-xs text-slate-500">
+                    The unit and single-unit setting are fixed once a region has wells.
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">

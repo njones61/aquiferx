@@ -776,21 +776,54 @@ const App: React.FC = () => {
 
   // --- Region/Aquifer rename & delete handlers ---
 
-  const handleEditRegion = async (regionId: string, newName: string, lengthUnit: 'ft' | 'm') => {
+  // Regions whose length unit and single-unit setting are fixed: wells store
+  // ground elevation in the region's unit and sit in its aquifers.
+  const regionsWithWells = useMemo(() => new Set(wells.map(w => w.regionId)), [wells]);
+
+  const handleEditRegion = async (regionId: string, newName: string, lengthUnit: 'ft' | 'm', singleUnit: boolean) => {
     const region = regions.find(r => r.id === regionId);
     if (!region) return;
+    const locked = regionsWithWells.has(regionId);
+    if (locked) {
+      lengthUnit = region.lengthUnit;
+      singleUnit = region.singleUnit;
+    }
 
-    setRegions(prev => prev.map(r => r.id === regionId ? { ...r, name: newName, lengthUnit } : r));
-
-    // Persist updated region.json (per-folder)
     const regionMeta = {
       id: regionId,
       name: newName,
       lengthUnit,
-      singleUnit: region.singleUnit,
+      singleUnit,
       customDataTypes: region.customDataTypes,
     };
-    await saveFiles([{ path: `${regionId}/region.json`, content: JSON.stringify(regionMeta, null, 2) }]);
+    const files = [{ path: `${regionId}/region.json`, content: JSON.stringify(regionMeta, null, 2) }];
+
+    if (singleUnit === region.singleUnit) {
+      setRegions(prev => prev.map(r => r.id === regionId ? { ...r, name: newName, lengthUnit } : r));
+      await saveFiles(files);
+      return;
+    }
+
+    // Switching single-unit (only allowed before there are wells). A
+    // single-unit region's one aquifer, id 0, is the region outline; going
+    // back to aquifers starts with none.
+    if (selectedRegion?.id === regionId) {
+      setSelectedAquifer(null);
+      setSelectedWells([]);
+    }
+    if (singleUnit) {
+      const features = (region.geojson?.features || []).map((f: any) => ({
+        type: 'Feature',
+        properties: { aquifer_id: '0', aquifer_name: newName },
+        geometry: f.geometry,
+      }));
+      files.push({ path: `${regionId}/aquifers.geojson`, content: JSON.stringify({ type: 'FeatureCollection', features }, null, 2) });
+      await saveFiles(files);
+    } else {
+      await saveFiles(files);
+      await deleteFile(`${regionId}/aquifers.geojson`);
+    }
+    await handleDataChanged();
   };
 
   const handleDeleteRegion = async (regionId: string) => {
@@ -1105,6 +1138,7 @@ const App: React.FC = () => {
         visibleRegionIds={visibleRegionIds}
         onToggleRegionVisibility={toggleRegionVisibility}
         onEditRegion={handleEditRegion}
+        regionsWithWells={regionsWithWells}
         onDownloadRegion={handleDownloadRegion}
         onDeleteRegion={handleDeleteRegion}
         onRenameAquifer={handleRenameAquifer}
