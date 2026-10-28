@@ -92,7 +92,14 @@ Top bar keeps the breadcrumb on the left and the analysis commands on the right 
 stepper, Spatial Analysis, Impute), as GRACE keeps Color by / Window / Analyze there. Leaflet stays; matching the
 chrome does not need ArcGIS.
 
-## Phase 5: import and data-management simplifications
+## Phase 5: import and data-management simplifications (done 2026-10-28)
+
+As built: items 1-6, 8 and 9 below; item 7 and "Folder:" were already done in Phase 1 (the folder hint came back as
+"Folder name in backups"). Unit change is locked once a region has wells, with no conversion. Location columns are
+detected but the checkbox stays, in the column box, for files whose columns aren't recognized. "Add new only" drops
+Quick Refresh's latest-date cutoff and relies on the well+date key, which also keeps backfills. Custom-type
+suggestion chips went with Add Custom Type. `@types/react` added so tsc checks props.
+
 
 From the review on 2026-10-27, in order:
 

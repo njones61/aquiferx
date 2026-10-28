@@ -29,7 +29,7 @@
 - `services/reprojection.ts` — proj4 coordinate reprojection
 - `services/usgsApi.ts` — USGS Water Data API integration
 - `components/CatalogBrowser.tsx` — read-only catalog viewer, opened from DataTypeEditor and MeasurementImporter
-- `components/import/` — ImportDataHub, RegionImporter, AquiferImporter, WellImporter, MeasurementImporter, DataTypeEditor, ColumnMapperModal, ConfirmDialog
+- `components/import/` — ImportDataHub (adding only; edits and deletes are in the region tree menus), RegionImporter, AquiferImporter, WellImporter, MeasurementImporter, DataTypeEditor, ColumnMapperModal, ConfirmDialog
 - `public/data/catalog_wq.json` — global water quality parameter catalog (~38 entries with WQP mapping + MCL/WHO)
 - `services/gldasFetch.ts` — imputation's soil moisture (NOAA CPC v2, 1948 on) read with zarrita from `cdn.apps.geoglows.org/aqx/cpc-soil-moisture-0.5-v1.zarr`, built by `scripts/soil_moisture_store.py`
 - `components/PanelActions.tsx` — My Data's Add Data / Back up / Restore row (shown only in My Data), backup status note, restore dialog. Panel order: data set switch, actions, region tree, then the open region's options (data type when it has more than one, map labels, well filters). Settings is the header gear
@@ -43,7 +43,7 @@
 - **Catalog is authoritative**: standard WQ parameters (nitrate, arsenic, pH, etc.) live in `catalog_wq.json` and cannot be overridden per-region. If a region needs a different unit or name for a parameter, make a custom type with a non-catalog code (e.g. `hardness_caco3`) — not a rename of the catalog entry
 - **No pre-staging empty types**: a data type exists in a region exactly when its `data_{code}.csv` exists on disk. There is no way to "declare a type in advance" — importing data is the only action that creates one. DataTypeEditor renames and deletes non-catalog customs; new ones come only from the measurement importer
 - **Custom codes must not collide with catalog codes**: DataTypeEditor and the importer's detection panel both enforce this
-- Single-unit regions: aquifer section dimmed in UI, all data auto-assigned `aquifer_id=0`
+- Single-unit regions (the default for new regions): aquifer section dimmed in UI, all data auto-assigned `aquifer_id=0`. Single-unit and the length unit can change in Edit Region only until the region has wells
 - CSV delimiter auto-detection (comma vs tab)
 - Date format auto-detection (ISO, US, EU variants)
 - Measurement values stored in `value` column (not `wte`)
