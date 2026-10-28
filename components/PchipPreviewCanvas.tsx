@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { Well, Measurement } from '../types';
 import { interpolatePCHIP } from '../utils/interpolation';
+import { cssVar, useTheme } from '../utils/theme';
 
 const PREVIEW_COLORS = [
   '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
@@ -19,6 +20,7 @@ interface PchipPreviewCanvasProps {
 const PchipPreviewCanvas: React.FC<PchipPreviewCanvasProps> = ({
   wells, wteMeasurements, startTs, endTs, gldasRange,
 }) => {
+  const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +113,7 @@ const PchipPreviewCanvas: React.FC<PchipPreviewCanvasProps> = ({
     const toY = (v: number) => margin.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
 
     // Background
-    ctx.fillStyle = '#f8fafc';
+    ctx.fillStyle = cssVar('--bg');
     ctx.fillRect(0, 0, W, H);
 
     // GLDAS range shading
@@ -125,7 +127,7 @@ const PchipPreviewCanvas: React.FC<PchipPreviewCanvasProps> = ({
     }
 
     // Grid lines
-    ctx.strokeStyle = '#e2e8f0';
+    ctx.strokeStyle = cssVar('--chart-grid');
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= 4; i++) {
       const y = margin.top + (i / 4) * plotH;
@@ -176,7 +178,7 @@ const PchipPreviewCanvas: React.FC<PchipPreviewCanvasProps> = ({
     ctx.globalAlpha = 1;
 
     // X-axis labels (years)
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = cssVar('--chart-text');
     ctx.font = '10px system-ui, sans-serif';
     ctx.textAlign = 'center';
     const startYear = new Date(xMin).getFullYear();
@@ -197,7 +199,7 @@ const PchipPreviewCanvas: React.FC<PchipPreviewCanvasProps> = ({
       const py = margin.top + (i / 4) * plotH;
       ctx.fillText(val.toFixed(0), margin.left - 4, py + 3);
     }
-  }, [wellSeries, startTs, endTs, gldasRange]);
+  }, [wellSeries, startTs, endTs, gldasRange, theme]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => draw());

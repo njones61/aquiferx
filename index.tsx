@@ -3,7 +3,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import { initTheme } from './utils/theme';
 import { RasterFrameProvider } from './contexts/RasterFrameContext';
+
+initTheme();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

@@ -102,7 +102,7 @@ const BackupBar: React.FC<BackupBarProps> = ({ hasMyData, onDataChanged }) => {
       </div>
 
       {plan && (
-        <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-slate-700">
             {restoreState === 'confirm' && (
               <>
@@ -148,7 +148,7 @@ const BackupBar: React.FC<BackupBarProps> = ({ hasMyData, onDataChanged }) => {
                     ? `${plan.regions.length} region${plan.regions.length === 1 ? '' : 's'} restored to My Data.`
                     : restoreError}
                 </p>
-                <button onClick={() => setPlan(null)} className="w-full py-2 bg-slate-800 text-white rounded-lg text-sm font-bold hover:bg-slate-700">
+                <button onClick={() => setPlan(null)} className="w-full py-2 bg-slate-800 text-slate-50 rounded-lg text-sm font-bold hover:bg-slate-700">
                   Done
                 </button>
               </>

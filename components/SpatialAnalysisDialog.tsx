@@ -491,12 +491,12 @@ const SpatialAnalysisDialog: React.FC<SpatialAnalysisDialogProps> = ({
               {densityData.length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-1">Data Density (wells per 6-month bin)</h3>
-                  <div className="h-[130px] bg-slate-50 rounded-lg border border-slate-200 p-1">
+                  <div className="rfs-chart h-[130px] bg-slate-50 rounded-lg border border-slate-200 p-1">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={densityData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                        <XAxis dataKey="label" stroke="#94a3b8" fontSize={9} interval="preserveStartEnd" />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                        <XAxis dataKey="label" stroke="var(--chart-axis)" fontSize={9} interval="preserveStartEnd" />
+                        <YAxis stroke="var(--chart-axis)" fontSize={10} />
                         <ReferenceLine y={10} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1.5} />
                         <Tooltip
                           content={({ payload }) => {

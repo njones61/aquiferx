@@ -4,6 +4,7 @@ import { Region, Aquifer, RasterAnalysisMeta, ImputationModelMeta } from '../typ
 import { MapPin, Droplets, MoreVertical, Pencil, Trash2, Download, Layers, Loader2, Info, Check, X as XIcon, ChevronRight, ChevronDown, Activity, Eye, EyeOff, Copy, Plus, Upload } from 'lucide-react';
 import type { DataSource } from '../services/dataStore';
 import BackupBar from './BackupBar';
+import { setTheme, useTheme } from '../utils/theme';
 import { mountGeoglowsAuth, unmountGeoglowsAuth } from '../services/geoglowsAuth';
 
 // The GEOGLOWS wordmark and where it links. Env-driven so a fork can point the
@@ -109,6 +110,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onAddData,
   onDataChanged,
 }) => {
+  const theme = useTheme();
   // Sample Data ships with the app; nothing in it can be renamed or deleted
   const readOnly = dataView === 'sample';
   // --- State ---
@@ -582,13 +584,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
               setEditing(null);
             }}
-            className="p-0.5 rounded text-[var(--raster)] hover:bg-white/10"
+            className="p-0.5 rounded text-[var(--raster)] hover:bg-[var(--surface2)]"
           >
             <Check size={12} />
           </button>
           <button
             onClick={() => setEditing(null)}
-            className="p-0.5 rounded text-[var(--text-faint)] hover:bg-white/10"
+            className="p-0.5 rounded text-[var(--text-faint)] hover:bg-[var(--surface2)]"
           >
             <XIcon size={12} />
           </button>
@@ -633,7 +635,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               setMenuOpen(isRasterMenuOpen ? null : rasterMenuKey);
               setConfirmDelete(null);
             }}
-            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/raster:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
+            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/raster:opacity-100 transition-opacity cursor-pointer hover:bg-[var(--border)] ${
               isRasterMenuOpen ? 'opacity-100' : ''
             }`}
           >
@@ -677,13 +679,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
         {/* Hover metadata tooltip */}
         <div className="absolute left-full ml-2 top-0 hidden group-hover/raster:block z-[60] pointer-events-none">
-          <div className="bg-slate-800 text-white text-[11px] rounded-lg p-3 shadow-xl min-w-[220px] leading-relaxed">
-            <div className="font-semibold text-emerald-300 mb-1.5">{displayTitle}</div>
-            <div><span className="text-slate-400">Dates:</span> {m.params.startDate} &mdash; {m.params.endDate}</div>
-            <div><span className="text-slate-400">Interval:</span> {m.params.interval}</div>
-            <div><span className="text-slate-400">Resolution:</span> {m.params.resolution}</div>
-            <div><span className="text-slate-400">Data Type:</span> {m.dataType.toUpperCase()}</div>
-            <div className="mt-1.5 text-slate-400 text-[10px]">Created {new Date(m.createdAt).toLocaleDateString()}</div>
+          <div className="rfs-tip text-[11px] p-3 min-w-[220px] leading-relaxed">
+            <div className="font-semibold text-[var(--raster)] mb-1.5">{displayTitle}</div>
+            <div><span className="text-[var(--text-faint)]">Dates:</span> {m.params.startDate} &mdash; {m.params.endDate}</div>
+            <div><span className="text-[var(--text-faint)]">Interval:</span> {m.params.interval}</div>
+            <div><span className="text-[var(--text-faint)]">Resolution:</span> {m.params.resolution}</div>
+            <div><span className="text-[var(--text-faint)]">Data Type:</span> {m.dataType.toUpperCase()}</div>
+            <div className="mt-1.5 text-[var(--text-faint)] text-[10px]">Created {new Date(m.createdAt).toLocaleDateString()}</div>
           </div>
         </div>
       </div>
@@ -750,13 +752,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
               setEditing(null);
             }}
-            className="p-0.5 rounded text-[var(--model)] hover:bg-white/10"
+            className="p-0.5 rounded text-[var(--model)] hover:bg-[var(--surface2)]"
           >
             <Check size={12} />
           </button>
           <button
             onClick={() => setEditing(null)}
-            className="p-0.5 rounded text-[var(--text-faint)] hover:bg-white/10"
+            className="p-0.5 rounded text-[var(--text-faint)] hover:bg-[var(--surface2)]"
           >
             <XIcon size={12} />
           </button>
@@ -799,7 +801,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               setMenuOpen(isModelMenuOpen ? null : modelMenuKey);
               setConfirmDelete(null);
             }}
-            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/model:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
+            className={`p-0.5 rounded mr-1 flex-shrink-0 opacity-0 group-hover/model:opacity-100 transition-opacity cursor-pointer hover:bg-[var(--border)] ${
               isModelMenuOpen ? 'opacity-100' : ''
             }`}
           >
@@ -843,12 +845,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
         {/* Hover metadata tooltip */}
         <div className="absolute left-full ml-2 top-0 hidden group-hover/model:block z-[60] pointer-events-none">
-          <div className="bg-slate-800 text-white text-[11px] rounded-lg p-3 shadow-xl min-w-[220px] leading-relaxed">
-            <div className="font-semibold text-amber-300 mb-1.5">{m.title}</div>
-            <div><span className="text-slate-400">Dates:</span> {m.params.startDate} &mdash; {m.params.endDate}</div>
-            <div><span className="text-slate-400">Gap Size:</span> {m.params.gapSize} months</div>
-            <div><span className="text-slate-400">Wells Modeled:</span> {Object.keys(m.wellMetrics).length}</div>
-            <div className="mt-1.5 text-slate-400 text-[10px]">Created {new Date(m.createdAt).toLocaleDateString()}</div>
+          <div className="rfs-tip text-[11px] p-3 min-w-[220px] leading-relaxed">
+            <div className="font-semibold text-[var(--model)] mb-1.5">{m.title}</div>
+            <div><span className="text-[var(--text-faint)]">Dates:</span> {m.params.startDate} &mdash; {m.params.endDate}</div>
+            <div><span className="text-[var(--text-faint)]">Gap Size:</span> {m.params.gapSize} months</div>
+            <div><span className="text-[var(--text-faint)]">Wells Modeled:</span> {Object.keys(m.wellMetrics).length}</div>
+            <div className="mt-1.5 text-[var(--text-faint)] text-[10px]">Created {new Date(m.createdAt).toLocaleDateString()}</div>
           </div>
         </div>
       </div>
@@ -914,7 +916,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation();
                   handleAquiferChevronClick(a.id);
                 }}
-                className="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors hover:bg-white/15"
+                className="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors hover:bg-[var(--border)]"
               >
                 {isExpanded
                   ? <ChevronDown size={12} />
@@ -949,7 +951,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   setMenuOpen(isMenuOpen ? null : `aquifer-${a.id}`);
                   setConfirmDelete(null);
                 }}
-                className={`p-0.5 rounded ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
+                className={`p-0.5 rounded ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-[var(--border)] ${
                   isMenuOpen ? 'opacity-100' : ''
                 }`}
               >
@@ -1064,7 +1066,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation();
                   handleRegionChevronClick(r.id);
                 }}
-                className="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors hover:bg-white/15"
+                className="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 rounded cursor-pointer transition-colors hover:bg-[var(--border)]"
               >
                 {isExpanded
                   ? <ChevronDown size={12} />
@@ -1081,7 +1083,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 setMenuOpen(isMenuOpen ? null : `region-${r.id}`);
                 setConfirmDelete(null);
               }}
-              className={`p-0.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/15 ${
+              className={`p-0.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-[var(--border)] ${
                 isMenuOpen ? 'opacity-100' : ''
               }`}
             >
@@ -1148,10 +1150,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     );
   };
 
-  // data-theme is what @geoglows/geoglows-auth keys its dark styling off, so the
-  // account menu opens in the panel's colors rather than white.
+  // data-theme is what @geoglows/geoglows-auth keys its styling off, so the
+  // account menu opens in the panel's colors.
   return (
-    <aside className="rfs-panel w-80 flex flex-col z-20" data-theme="dark">
+    <aside className="rfs-panel w-80 flex flex-col z-20" data-theme={theme}>
       <header className="rfs-head">
         <div className="rfs-brand">
           <a href={LOGO_HREF} title="GEOGLOWS apps">
@@ -1211,13 +1213,23 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
+      <label className="flex items-center gap-2 px-4 py-2 text-xs text-[var(--text-dim)] border-t border-[var(--border)] cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="rfs-check"
+          checked={theme === 'light'}
+          onChange={e => setTheme(e.target.checked ? 'light' : 'dark')}
+        />
+        Light mode
+      </label>
+
       <BackupBar hasMyData={hasMyData} onDataChanged={onDataChanged} />
 
       {/* Edit Region Modal */}
       {editing && editing.startsWith('region-') && (() => {
         const regionId = editing.replace('region-', '');
         return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
             <div ref={editModalRef} className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
               <h3 className="text-lg font-bold text-slate-800 mb-4">Edit Region</h3>
               <div className="space-y-4">

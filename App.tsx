@@ -1720,13 +1720,13 @@ const App: React.FC = () => {
                       <RasterFrame>{frame => (
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={storageChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                           <XAxis
                             dataKey="date" type="number" domain={['dataMin', 'dataMax']}
                             tickFormatter={(t: number) => new Date(t).getFullYear().toString()}
-                            stroke="#94a3b8" fontSize={10}
+                            stroke="var(--chart-axis)" fontSize={10}
                           />
-                          <YAxis stroke="#94a3b8" fontSize={10}
+                          <YAxis stroke="var(--chart-axis)" fontSize={10}
                             tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             label={allRasterResults.length === 1 ? { value: storageVolumeUnit, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'var(--chart-text)', fontSize: 10 } } : undefined}
                           />

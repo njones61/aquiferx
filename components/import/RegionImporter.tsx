@@ -168,7 +168,7 @@ const RegionImporter: React.FC<RegionImporterProps> = ({ existingRegionIds, onCo
             <button
               onClick={() => { if (validateName(regionName)) setStep(2); }}
               disabled={!regionName.trim()}
-              className="flex items-center gap-1 px-6 py-2 bg-slate-800 text-white rounded-lg font-medium text-sm hover:bg-slate-700 disabled:opacity-50"
+              className="flex items-center gap-1 px-6 py-2 bg-slate-800 text-slate-50 rounded-lg font-medium text-sm hover:bg-slate-700 disabled:opacity-50"
             >
               Next <ChevronRight size={16} />
             </button>

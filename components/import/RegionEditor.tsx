@@ -105,7 +105,7 @@ const RegionEditor: React.FC<RegionEditorProps> = ({ regions, onSave, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
         <header className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="text-lg font-bold text-slate-800">Edit Regions</h3>

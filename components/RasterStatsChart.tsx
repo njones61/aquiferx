@@ -108,14 +108,14 @@ const RasterStatsChart: React.FC<RasterStatsChartProps> = ({
       </div>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
           <XAxis
             dataKey="date" type="number" domain={['dataMin', 'dataMax']}
             tickFormatter={(t: number) => new Date(t).getFullYear().toString()}
-            stroke="#94a3b8" fontSize={10}
+            stroke="var(--chart-axis)" fontSize={10}
           />
           <YAxis
-            stroke="#94a3b8" fontSize={10}
+            stroke="var(--chart-axis)" fontSize={10}
             domain={yDomain}
             tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })}
             label={{ value: `${dataTypeName} (${dataTypeUnit})`, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'var(--chart-text)', fontSize: 10 } }}

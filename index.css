@@ -41,12 +41,14 @@
 }
 
 /* ── GEOGLOWS control-column theme ────────────────────────────────────────
-   The left panel is styled to match webapp-rfs-v3, so the two apps read as
-   one family: dark surfaces, Open Sans, a cyan accent, uppercase tracked-out
-   section eyebrows. Tokens are lifted from that app's src/styles/tokens.css.
+   The panel, top bar, map cards and charts are styled to match the GRACE and
+   RFS apps, so they read as one family: Open Sans, a cyan accent, uppercase
+   tracked-out section eyebrows, and the same tokens for surfaces and text.
 
-   Everything is scoped under .rfs-panel — the map, the top header, and the
-   chart pane stay on the light Tailwind palette they already use. */
+   Two themes, light by default. The tokens below hold the light set on :root
+   and the dark set under :root[data-theme="dark"]; the Tailwind palette the
+   dialogs use switches on the same attribute (tailwind.config.js), and
+   utils/theme.ts sets it. */
 
 @font-face {
   font-family: "Open Sans";
@@ -56,11 +58,53 @@
   src: url("/fonts/opensans.woff2") format("woff2");
 }
 
-/* On :root rather than on .rfs-panel: the map's own chrome — the basemap picker
-   at its corner — is styled to match and sits outside the panel entirely. Only
-   the .rfs-* rules below read any of these, so nothing else inherits a look
-   from them. */
+/* --bg is the recessed ground in both themes: what a control sits in, so it
+   goes lighter than --surface in light and darker in dark. --accent deepens in
+   light, because the cyan that reads on near-black is too pale to carry white
+   text. color-scheme tells the browser to draw its own parts of a control
+   (spinner arrows, caret, scrollbars) to suit. */
 :root {
+  color-scheme: light;
+
+  --bg: #eef2f7;
+  --surface: #ffffff;
+  --surface2: #f1f5f9;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text-dim: #334155;
+  --text-faint: #64748b;
+  --accent: #0369a1;
+  --on-accent: #ffffff;
+  --check: #16a34a;
+  --danger: #dc2626;
+  --danger-text: #b91c1c;
+  --warn-text: #b45309;
+  --shadow: 0 8px 28px rgba(15, 23, 42, 0.18);
+  --shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.15);
+
+  /* Chart chrome. Kept separate from the surface tokens because a chart's
+     grid has to sit further back than any border does: it is a reading aid
+     behind the data. */
+  --chart-grid: rgba(71, 85, 105, 0.16);
+  --chart-axis: #475569;
+  --chart-text: #475569;
+
+  /* One hue per level of the tree, far enough apart to tell at 11px. The
+     model moved off amber when the aquifer took yellow, since two adjacent
+     levels lighting up in the same hue is unreadable. */
+  --aquifer: #a16207;
+  --raster: #047857;
+  --model: #be185d;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --size: 36px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
   --bg: #0a0e17;
   --surface: #111827;
   --surface2: #1e293b;
@@ -74,35 +118,26 @@
   --danger: #ef4444;
   --danger-text: #fca5a5;
   --warn-text: #fcd34d;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
 
-  /* Chart chrome. Kept separate from the surface tokens because a chart's
-     grid has to sit further back than any border does — it is a reading aid
-     behind the data, not an edge. */
   --chart-grid: rgba(148, 163, 184, 0.14);
   --chart-axis: #64748b;
   --chart-text: #b6c2d3;
 
-  /* One hue per level of the tree, far enough apart to tell at 11px on a dark
-     ground. The model moved off amber when the aquifer took yellow — two
-     adjacent levels lighting up in the same hue is unreadable. */
   --aquifer: #facc15;
   --raster: #34d399;
   --model: #f472b6;
-
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 8px;
-  --size: 36px;
 }
 
-/* color-scheme is what tells the browser to draw its *own* parts of a control
-   dark — a number field's spinner arrows, the caret, selection, scrollbars.
-   Without it those stay light-mode and a spinner is near-invisible against
-   var(--bg). Declared per dark surface rather than on :root, because the rest
-   of the app — the import wizards, the dialogs, the chart pane — is still
-   light and would get dark native controls on white cards. */
+/* A text field or select with no background class of its own would get the
+   browser's grey in dark. :where() keeps this at zero specificity, so any
+   bg-* class on the field still wins. */
+:where(:root[data-theme="dark"]) :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) {
+  background-color: rgb(var(--card));
+}
+
 .rfs-panel {
-  color-scheme: dark;
   font-family: "Open Sans", "Segoe UI", system-ui, sans-serif;
   background: var(--surface);
   color: var(--text);
@@ -332,11 +367,10 @@
 
 /* ── Menus and inline editors inside the panel ── */
 .rfs-menu {
-  color-scheme: dark;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow);
   padding: 4px;
 }
 
@@ -378,7 +412,6 @@
 }
 
 .rfs-input {
-  color-scheme: dark;
   width: 100%;
   padding: 3px 7px;
   font-size: 12px;
@@ -406,7 +439,7 @@
   flex: 0 0 auto;
   color: var(--text-dim);
   background: var(--surface);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-sm);
 }
 
 .rfs-btn.map svg {
@@ -440,18 +473,16 @@
    the animation player. RFS's `.card`: a surface, a border, and a shadow deep
    enough to hold its edge against imagery. */
 .rfs-card {
-  color-scheme: dark;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow);
 }
 
 /* A number or text field on one of those cards. Neutral until touched, then
    accent — the same two states RFS gives every input. */
 .rfs-field {
-  color-scheme: dark;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);
@@ -524,7 +555,7 @@
 .leaflet-bar {
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -551,7 +582,7 @@
 
 .leaflet-control-attribution {
   color: var(--text-faint);
-  background: rgba(17, 24, 39, 0.85);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
 }
 
 .leaflet-control-attribution a {
@@ -566,7 +597,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow);
 }
 
 .leaflet-tooltip-top::before {
@@ -622,7 +653,7 @@
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow);
 }
 
 /* ── Hover labels ─────────────────────────────────────────────────────────
@@ -653,7 +684,7 @@
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s 0.25s;

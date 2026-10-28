@@ -28,7 +28,7 @@ const ColumnMapperModal: React.FC<ColumnMapperModalProps> = ({
   title = 'Map Columns'
 }) => {
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg font-bold text-slate-800">{title}</h3>
@@ -85,7 +85,7 @@ const ColumnMapperModal: React.FC<ColumnMapperModalProps> = ({
         <div className="flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800 text-white rounded-lg font-medium text-sm hover:bg-slate-700"
+            className="px-4 py-2 bg-slate-800 text-slate-50 rounded-lg font-medium text-sm hover:bg-slate-700"
           >
             Done
           </button>

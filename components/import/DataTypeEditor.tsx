@@ -298,7 +298,7 @@ const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
         )}
 
         <div className="flex justify-end">
-          <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium text-sm hover:bg-slate-700">Done</button>
+          <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-slate-50 rounded-lg font-medium text-sm hover:bg-slate-700">Done</button>
         </div>
       </div>
 

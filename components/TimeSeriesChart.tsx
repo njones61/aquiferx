@@ -580,7 +580,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
             }
           }}
         >
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94a3b8" />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
           <XAxis
             dataKey="date"
             type="number"
@@ -597,15 +597,15 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ measurements, selecte
             tickFormatter={formatXAxis}
             stroke="#475569"
             fontSize={11}
-            tick={{ fill: '#334155' }}
+            tick={{ fill: 'var(--chart-text)' }}
           />
           <YAxis
             domain={yDomain as any}
             stroke="#475569"
             fontSize={11}
-            tick={{ fill: '#334155' }}
+            tick={{ fill: 'var(--chart-text)' }}
             tickFormatter={(val) => val.toLocaleString()}
-            label={{ value: yAxisLabel, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#64748b', fontSize: 11 } }}
+            label={{ value: yAxisLabel, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'var(--chart-text)', fontSize: 11 } }}
           />
           <Tooltip
             content={({ label, payload }) => {

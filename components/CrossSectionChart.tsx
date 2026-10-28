@@ -25,18 +25,18 @@ const CrossSectionChart: React.FC<CrossSectionChartProps> = ({ profile, frameIdx
   return (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
         <XAxis
           dataKey="distance"
           type="number"
           domain={['dataMin', 'dataMax']}
           tickFormatter={(v: number) => v.toFixed(0)}
-          stroke="#94a3b8"
+          stroke="var(--chart-axis)"
           fontSize={10}
           label={{ value: `Distance (${unitLabel})`, position: 'insideBottom', offset: -2, style: { fill: 'var(--chart-text)', fontSize: 10 } }}
         />
         <YAxis
-          stroke="#94a3b8"
+          stroke="var(--chart-axis)"
           fontSize={10}
           domain={[profile.elevationRange[0], profile.elevationRange[1]]}
           tickFormatter={(v: number) => v.toFixed(0)}

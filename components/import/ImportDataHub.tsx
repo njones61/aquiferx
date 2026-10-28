@@ -175,7 +175,7 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
     : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         <header className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
@@ -323,7 +323,7 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
         <footer className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold text-sm hover:bg-slate-700"
+            className="px-6 py-2 bg-slate-800 text-slate-50 rounded-lg font-bold text-sm hover:bg-slate-700"
           >
             Done
           </button>

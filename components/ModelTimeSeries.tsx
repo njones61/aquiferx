@@ -179,7 +179,7 @@ const ModelTimeSeries: React.FC<ModelTimeSeriesProps> = ({
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
             <XAxis
               dataKey="date"
               type="number"
@@ -187,10 +187,10 @@ const ModelTimeSeries: React.FC<ModelTimeSeriesProps> = ({
               domain={['dataMin', 'dataMax']}
               ticks={yearTicks}
               tickFormatter={formatDate}
-              stroke="#94a3b8"
+              stroke="var(--chart-axis)"
               fontSize={10}
             />
-            <YAxis stroke="#94a3b8" fontSize={10} domain={yDomain} tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })} />
+            <YAxis stroke="var(--chart-axis)" fontSize={10} domain={yDomain} tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })} />
             <Tooltip
               labelFormatter={(ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }}
               formatter={(value: number, name: string) => [
@@ -316,7 +316,7 @@ const ModelTimeSeries: React.FC<ModelTimeSeriesProps> = ({
           {logExpanded && (
             <div className="rfs-scroll max-h-[120px] overflow-y-auto px-3 py-1 bg-[var(--bg)] font-mono text-[10px] text-[var(--text-dim)] space-y-0.5">
               {model.log.map((msg, i) => (
-                <div key={i} className={msg.startsWith('ERROR') ? 'text-red-400' : msg.includes('R²') ? 'text-emerald-400' : ''}>
+                <div key={i} className={msg.startsWith('ERROR') ? 'text-red-600' : msg.includes('R²') ? 'text-emerald-700' : ''}>
                   {msg}
                 </div>
               ))}

@@ -4,7 +4,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aquifer Analyst v1</title>
+  <title>Aquifer Analyst</title>
+  <script>
+    // A remembered dark theme goes on before first paint, so the page never
+    // flashes light on the way to it. utils/theme.ts takes over from here.
+    try { if (localStorage.getItem('aqx-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}
+  </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <style>
     /* Ensure Leaflet controls don't overlap our UI */
