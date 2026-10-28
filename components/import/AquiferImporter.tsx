@@ -14,7 +14,8 @@ interface AquiferImporterProps {
 }
 
 const FIELD_DEFS = [
-  { key: 'aquifer_id', label: 'Aquifer ID', required: true },
+  // Left unmapped (or blank on a feature), the aquifer gets the next free number
+  { key: 'aquifer_id', label: 'Aquifer ID (optional)', required: false },
   { key: 'aquifer_name', label: 'Aquifer Name', required: true },
 ];
 
@@ -55,14 +56,34 @@ const AquiferImporter: React.FC<AquiferImporterProps> = ({
     setError('');
     try {
       const features = file.data.type === 'FeatureCollection' ? file.data.features : [file.data];
-      const newFeatures = features.map((f: any) => ({
-        type: 'Feature',
-        properties: {
-          aquifer_id: String(f.properties?.[file.mapping['aquifer_id']] || ''),
-          aquifer_name: f.properties?.[file.mapping['aquifer_name']] || ''
-        },
-        geometry: f.geometry
-      }));
+
+      let existingFeatures: any[] = [];
+      if (importMode === 'append') {
+        try {
+          const gj = await readJson(`${regionId}/aquifers.geojson`);
+          if (gj) existingFeatures = gj.type === 'FeatureCollection' ? gj.features : [gj];
+        } catch {}
+      }
+
+      // Aquifers without an ID are numbered after the highest numeric ID
+      // already in the region or the file
+      const idCol = file.mapping['aquifer_id'];
+      const givenIds = [
+        ...existingFeatures.map((f: any) => String(f.properties?.aquifer_id ?? '')),
+        ...(idCol ? features.map((f: any) => String(f.properties?.[idCol] ?? '')) : []),
+      ];
+      let nextId = Math.max(0, ...givenIds.map(id => /^\d+$/.test(id) ? parseInt(id, 10) : 0)) + 1;
+      const newFeatures = features.map((f: any) => {
+        const given = idCol ? String(f.properties?.[idCol] ?? '').trim() : '';
+        return {
+          type: 'Feature',
+          properties: {
+            aquifer_id: given || String(nextId++),
+            aquifer_name: f.properties?.[file.mapping['aquifer_name']] || ''
+          },
+          geometry: f.geometry
+        };
+      });
 
       if (importMode === 'replace') {
         // Delete wells and all data files, then write new aquifers
@@ -80,15 +101,7 @@ const AquiferImporter: React.FC<AquiferImporterProps> = ({
           content: JSON.stringify({ type: 'FeatureCollection', features: newFeatures }, null, 2)
         }]);
       } else {
-        // Append: load existing, skip duplicates
-        let existingFeatures: any[] = [];
-        try {
-          const gj = await readJson(`${regionId}/aquifers.geojson`);
-          if (gj) {
-            existingFeatures = gj.type === 'FeatureCollection' ? gj.features : [gj];
-          }
-        } catch {}
-
+        // Append: skip IDs the region already has
         const existingIds = new Set(existingFeatures.map((f: any) => String(f.properties?.aquifer_id || '')));
         const toAdd = newFeatures.filter((f: any) => !existingIds.has(String(f.properties?.aquifer_id || '')));
         setSkippedCount(newFeatures.length - toAdd.length);
@@ -114,7 +127,7 @@ const AquiferImporter: React.FC<AquiferImporterProps> = ({
     }
   };
 
-  const isReady = file && file.mapping['aquifer_id'] && file.mapping['aquifer_name'];
+  const isReady = file && file.mapping['aquifer_name'];
 
   return (
     <div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/40" onClick={onClose}>
