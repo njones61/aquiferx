@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, MapPin, Layers, Navigation, BarChart3, Plus, Settings, Download, Upload, Loader2, CheckCircle2, AlertTriangle, Pencil } from 'lucide-react';
+import { X, MapPin, Layers, Navigation, BarChart3, Plus, Settings } from 'lucide-react';
 import { RegionMeta, DataType, ParameterCatalog } from '../../types';
 import { listRegions, readJson, readText } from '../../services/dataStore';
 import { loadCatalog, computeEffectiveDataTypes } from '../../services/catalog';
@@ -8,8 +8,6 @@ import AquiferImporter from './AquiferImporter';
 import WellImporter from './WellImporter';
 import MeasurementImporter from './MeasurementImporter';
 import DataTypeEditor from './DataTypeEditor';
-import RegionEditor from './RegionEditor';
-import AquiferEditor from './AquiferEditor';
 
 interface ImportDataHubProps {
   onClose: () => void;
@@ -117,13 +115,36 @@ async function fetchRegionList(catalog: ParameterCatalog | null): Promise<Region
   return infos;
 }
 
+interface DataCardProps {
+  icon: React.ReactNode;
+  tint: string;
+  title: string;
+  count: number;
+  /** Why the card can't be used yet; empty when it can. */
+  blocked: string;
+  detail?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const DataCard: React.FC<DataCardProps> = ({ icon, tint, title, count, blocked, detail, children }) => (
+  <div className="border rounded-xl p-4 flex flex-col">
+    <div className={`flex items-center gap-2 mb-2 ${blocked ? 'opacity-50' : ''}`}>
+      <div className={`p-1.5 rounded-lg ${tint}`}>{icon}</div>
+      <h4 className="font-semibold text-slate-700 text-sm">{title}</h4>
+    </div>
+    <p className={`text-2xl font-bold text-slate-800 mb-2 ${blocked ? 'opacity-50' : ''}`}>{count}</p>
+    {!blocked && detail}
+    <div className="mt-auto">
+      {blocked ? <p className="text-xs text-slate-500 leading-snug">{blocked}</p> : children}
+    </div>
+  </div>
+);
+
 const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, initialRegionId }) => {
   const [regionList, setRegionList] = useState<RegionInfo[]>([]);
   const [catalog, setCatalog] = useState<ParameterCatalog | null>(null);
   const [activeRegionId, setActiveRegionId] = useState<string | null>(initialRegionId || null);
   const [activeWizard, setActiveWizard] = useState<'region' | 'aquifer' | 'well' | 'measurement' | 'datatypes' | null>(null);
-  const [showRegionEditor, setShowRegionEditor] = useState(false);
-  const [showAquiferEditor, setShowAquiferEditor] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadRegions = async () => {
@@ -157,30 +178,28 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
     onDataChanged();
   };
 
-  // Dimming logic
+  // A card that can't be used yet is dimmed, with the reason under it
   const noRegion = !activeRegion;
   const isSingleUnit = activeRegion?.singleUnit || false;
   const noAquifers = (activeRegion?.aquiferCount || 0) === 0;
-  const noWells = (activeRegion?.wellCount || 0) === 0;
+  const PICK_REGION = 'Choose a region above.';
+  const NEED_AQUIFERS = 'Add aquifers first, or make this a single-unit region (region menu → Edit).';
 
-  const dimAquifers = noRegion || isSingleUnit;
-  const dimWells = noRegion || (!isSingleUnit && noAquifers);
-  // Measurements card stays enabled even when wellCount === 0 — CSV imports
-  // with lat/lng can bootstrap the well set. Aquifers must still exist for
-  // multi-unit regions so measurements can be assigned.
-  const dimMeasurements = noRegion || (!isSingleUnit && noAquifers);
-
-  const totalMeasurements = activeRegion
-    ? Object.values(activeRegion.measurementCounts).reduce((a: number, b: number) => a + b, 0)
-    : 0;
+  const aquifersBlocked = noRegion ? PICK_REGION : isSingleUnit
+    ? 'This is a single-unit region, so it has no aquifers. To add them, turn off single-unit (region menu → Edit).'
+    : '';
+  const wellsBlocked = noRegion ? PICK_REGION : (!isSingleUnit && noAquifers) ? NEED_AQUIFERS : '';
+  // Measurements don't need wells: a CSV with locations can create them.
+  // A multi-unit region still needs aquifers to assign them to.
+  const measurementsBlocked = wellsBlocked;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         <header className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Manage Data</h2>
-            <p className="text-xs text-slate-500 font-medium">Manage regions and their data</p>
+            <h2 className="text-xl font-bold text-slate-800">Add Data</h2>
+            <p className="text-xs text-slate-500 font-medium">Add regions, aquifers, wells and measurements to My Data</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
@@ -196,22 +215,12 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
               <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
                 <MapPin size={14} /> Regions
               </h3>
-              <div className="flex items-center gap-2">
-                {regionList.length > 0 && (
-                  <button
-                    onClick={() => setShowRegionEditor(true)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-xs font-medium hover:bg-slate-200 transition-colors"
-                  >
-                    <Pencil size={14} /> Edit Regions
-                  </button>
-                )}
-                <button
-                  onClick={() => setActiveWizard('region')}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-xs font-medium hover:bg-blue-100 transition-colors"
-                >
-                  <Plus size={14} /> Add Region
-                </button>
-              </div>
+              <button
+                onClick={() => setActiveWizard('region')}
+                className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-xs font-medium hover:bg-blue-100 transition-colors"
+              >
+                <Plus size={14} /> Add Region
+              </button>
             </div>
 
             {isLoading ? (
@@ -240,67 +249,45 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
 
           {/* Data cards */}
           <div className="grid grid-cols-3 gap-4">
-            {/* Aquifers */}
-            <div className={`border rounded-xl p-4 transition-opacity ${dimAquifers ? 'opacity-40 pointer-events-none' : ''}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-600"><Layers size={16} /></div>
-                <h4 className="font-semibold text-slate-700 text-sm">Aquifers</h4>
-              </div>
-              <p className="text-2xl font-bold text-slate-800 mb-3">{activeRegion?.aquiferCount || 0}</p>
-              {isSingleUnit ? (
-                <p className="text-xs text-slate-400 italic">Single-unit mode</p>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setActiveWizard('aquifer')}
-                    className="flex-1 flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md text-xs font-medium hover:bg-indigo-100 transition-colors justify-center"
-                  >
-                    <Plus size={14} /> Add
-                  </button>
-                  {(activeRegion?.aquiferCount || 0) > 0 && (
-                    <button
-                      onClick={() => setShowAquiferEditor(true)}
-                      className="p-1.5 bg-slate-100 text-slate-500 rounded-md hover:bg-slate-200 hover:text-slate-700 transition-colors"
-                      title="Edit Aquifers"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+            <DataCard
+              icon={<Layers size={16} />} tint="bg-indigo-100 text-indigo-600" title="Aquifers"
+              count={activeRegion?.aquiferCount || 0} blocked={aquifersBlocked}
+            >
+              <button
+                onClick={() => setActiveWizard('aquifer')}
+                className="w-full flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md text-xs font-medium hover:bg-indigo-100 transition-colors justify-center"
+              >
+                <Plus size={14} /> Add Aquifers
+              </button>
+            </DataCard>
 
-            {/* Wells */}
-            <div className={`border rounded-xl p-4 transition-opacity ${dimWells ? 'opacity-40 pointer-events-none' : ''}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-lg bg-green-100 text-green-600"><Navigation size={16} /></div>
-                <h4 className="font-semibold text-slate-700 text-sm">Wells</h4>
-              </div>
-              <p className="text-2xl font-bold text-slate-800 mb-3">{activeRegion?.wellCount || 0}</p>
+            <DataCard
+              icon={<Navigation size={16} />} tint="bg-green-100 text-green-600" title="Wells"
+              count={activeRegion?.wellCount || 0} blocked={wellsBlocked}
+            >
               <button
                 onClick={() => setActiveWizard('well')}
                 className="flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 rounded-md text-xs font-medium hover:bg-green-100 transition-colors w-full justify-center"
               >
                 <Plus size={14} /> Add Wells
               </button>
-            </div>
+            </DataCard>
 
-            {/* Measurements */}
-            <div className={`border rounded-xl p-4 transition-opacity ${dimMeasurements ? 'opacity-40 pointer-events-none' : ''}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-lg bg-cyan-100 text-cyan-600"><BarChart3 size={16} /></div>
-                <h4 className="font-semibold text-slate-700 text-sm">Measurements</h4>
-              </div>
-              <p className="text-2xl font-bold text-slate-800 mb-1">{totalMeasurements}</p>
-              {activeRegion && activeRegion.effectiveDataTypes.length > 0 && (
-                <div className="text-xs text-slate-400 mb-2">
+            <DataCard
+              icon={<BarChart3 size={16} />} tint="bg-cyan-100 text-cyan-600" title="Measurements"
+              count={Object.values(activeRegion?.measurementCounts || {}).reduce((a: number, b: number) => a + b, 0)}
+              blocked={measurementsBlocked}
+              detail={activeRegion && activeRegion.effectiveDataTypes.length > 0 && (
+                <ul className="text-xs text-slate-500 mb-2 space-y-0.5">
                   {activeRegion.effectiveDataTypes.map(dt => (
-                    <span key={dt.code} className="mr-2">
-                      {dt.code}: {activeRegion.measurementCounts[dt.code] || 0}
-                    </span>
+                    <li key={dt.code} className="flex justify-between gap-2">
+                      <span className="truncate">{dt.name}</span>
+                      <span className="tabular-nums">{activeRegion.measurementCounts[dt.code] || 0}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
+            >
               <div className="flex gap-2">
                 <button
                   onClick={() => setActiveWizard('measurement')}
@@ -311,12 +298,12 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
                 <button
                   onClick={() => setActiveWizard('datatypes')}
                   className="p-1.5 bg-slate-100 text-slate-500 rounded-md hover:bg-slate-200 hover:text-slate-700 transition-colors"
-                  title="Manage Data Types"
+                  title="Rename or delete this region's custom data types"
                 >
                   <Settings size={14} />
                 </button>
               </div>
-            </div>
+            </DataCard>
           </div>
         </div>
 
@@ -383,22 +370,6 @@ const ImportDataHub: React.FC<ImportDataHubProps> = ({ onClose, onDataChanged, i
           singleUnit={activeRegion.singleUnit}
           onUpdate={() => { loadRegions(); onDataChanged(); }}
           onClose={() => setActiveWizard(null)}
-        />
-      )}
-      {showRegionEditor && (
-        <RegionEditor
-          regions={regionList}
-          onSave={() => { loadRegions(); onDataChanged(); }}
-          onClose={() => setShowRegionEditor(false)}
-        />
-      )}
-      {showAquiferEditor && activeRegion && (
-        <AquiferEditor
-          regionId={activeRegion.id}
-          regionName={activeRegion.name}
-          dataTypes={activeRegion.effectiveDataTypes}
-          onSave={() => { loadRegions(); onDataChanged(); }}
-          onClose={() => setShowAquiferEditor(false)}
         />
       )}
     </div>
