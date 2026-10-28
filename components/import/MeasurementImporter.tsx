@@ -55,9 +55,11 @@ interface MeasurementImporterProps {
   onClose: () => void;
 }
 
-type ImportMode = 'append' | 'replace';
+// What to do with measurements already in the region for the types being
+// imported, keyed on well and date: keep them and add only new ones, let the
+// import overwrite matching ones, or start over.
+type ExistingMode = 'add' | 'update' | 'replace';
 type DataSource = 'upload' | 'usgs' | 'wqp';
-type USGSMode = 'fresh' | 'quick-refresh' | 'full-refresh';
 type AquiferAssignment = 'from-wells' | 'single' | 'csv-field';
 type WqpProvider = 'all' | 'NWIS';
 
@@ -68,7 +70,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   const [file, setFile] = useState<UploadedFile | null>(null);
   const [showMapper, setShowMapper] = useState(false);
   const [dateFormat, setDateFormat] = useState('iso');
-  const [importMode, setImportMode] = useState<ImportMode>('append');
+  const [existingMode, setExistingMode] = useState<ExistingMode>('add');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
@@ -94,7 +96,6 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   const [apiKey, setApiKey] = useState(getUSGSApiKey());
 
   // USGS download
-  const [usgsMode, setUsgsMode] = useState<USGSMode>('quick-refresh');
   const [usgsIsLoading, setUsgsIsLoading] = useState(false);
   const [usgsProgress, setUsgsProgress] = useState({ completed: 0, total: 0, done: false });
   const [qualityReport, setQualityReport] = useState<USGSDataQualityReport | null>(null);
@@ -102,7 +103,6 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   const [trimStartDate, setTrimStartDate] = useState('');
   const [trimEndDate, setTrimEndDate] = useState('');
   const [isTrimmed, setIsTrimmed] = useState(false);
-  const [quickRefreshCutoff, setQuickRefreshCutoff] = useState('');
   const [rawUSGSMeasurements, setRawUSGSMeasurements] = useState<USGSMeasurement[]>([]);
 
   // Phase 3: smart well discovery + column detection
@@ -531,7 +531,6 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
     setFile(null);
     setDataSpan(null);
     setIsTrimmed(false);
-    setQuickRefreshCutoff('');
     setUsgsProgress({ completed: 0, total: 0, done: false });
     try {
       // Get well IDs from wells.csv
@@ -597,31 +596,9 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       setQualityReport(report);
       setRawUSGSMeasurements(measurements);
 
-      // Mode-specific post-processing
-      let filtered = measurements;
-
-      if (usgsMode === 'quick-refresh') {
-        // Find max existing date for USGS wells
-        try {
-          const dataText = await readText(`${regionId}/data_wte.csv`);
-          if (dataText !== null) {
-            const { rows: dataRows } = parseCSV(dataText);
-            const usgsDateSet = new Set(Object.values(apiToWellId));
-            const usgsRows = dataRows.filter(r => usgsDateSet.has(r.well_id));
-            if (usgsRows.length > 0) {
-              const dates = usgsRows.map(r => r.date).filter(Boolean).sort();
-              const cutoff = dates[dates.length - 1];
-              setQuickRefreshCutoff(cutoff);
-              filtered = measurements.filter(m => m.date > cutoff);
-            }
-          }
-        } catch {}
-      }
-      // full-refresh: no filtering — all records go to merge at save time
-      // fresh: no filtering
-
-      const label = !hasExistingData || usgsMode === 'fresh' ? 'USGS Measurements' : `USGS ${usgsMode === 'quick-refresh' ? 'Quick' : 'Full'} Refresh`;
-      buildUSGSFile(filtered, label);
+      // Records already in the region are skipped or overwritten at save
+      // time, per the existing-data choice
+      buildUSGSFile(measurements, 'USGS Measurements');
       setSelectedTypes(['wte']);
       setIsMultiType(false);
       setUsgsProgress({ completed: usgsSiteIds.length, total: usgsSiteIds.length, done: true });
@@ -634,16 +611,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   // Apply date range trim to USGS data
   const handleTrim = () => {
     if (rawUSGSMeasurements.length === 0) return;
-    let filtered = rawUSGSMeasurements;
-
-    // Re-apply mode filter first (quick-refresh cutoff)
-    if (usgsMode === 'quick-refresh' && quickRefreshCutoff) {
-      filtered = filtered.filter(m => m.date > quickRefreshCutoff);
-    }
-
-    // Then apply date range
-    filtered = filterByDateRange(filtered, trimStartDate || null, trimEndDate || null);
-
+    const filtered = filterByDateRange(rawUSGSMeasurements, trimStartDate || null, trimEndDate || null);
     buildUSGSFile(filtered, 'USGS Measurements (Trimmed)');
     setIsTrimmed(true);
   };
@@ -1188,15 +1156,10 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         const effectiveType = dataTypes.find(d => d.code === typeCode);
         typeNames[typeCode] = effectiveType?.name || typeCode;
 
-        // Merge/overwrite depends on source and mode. USGS downloads are
-        // always single-type wte, so the usgsMode cases never apply to a
-        // multi-type import. Merged saves carry an optimistic-lock
-        // precondition; intentional overwrites (fresh+replace) don't.
+        // Merged saves carry an optimistic-lock precondition; a replace,
+        // which overwrites on purpose, doesn't.
         let precondition: { ifVersion?: number; mustNotExist?: boolean } = {};
-        const mergeMode: 'append' | 'full-refresh' | null =
-          dataSource === 'usgs'
-            ? (usgsMode === 'fresh' && importMode === 'replace' ? null : usgsMode === 'full-refresh' ? 'full-refresh' : 'append')
-            : (importMode === 'append' ? 'append' : null);
+        const mergeMode = existingMode === 'add' ? 'append' : existingMode === 'update' ? 'full-refresh' : null;
         if (mergeMode) {
           const merged = await mergeTypeWithExisting(typeCode, processed, mergeMode);
           processed = merged.rows;
@@ -1309,7 +1272,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   };
 
   const handleSave = () => {
-    if (importMode === 'replace' && hasExistingData) {
+    if (existingMode === 'replace' && hasExistingData) {
       setShowReplaceConfirm(true);
     } else {
       doSave();
@@ -1554,33 +1517,26 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         )}
 
 
-        {/* Import mode — show for upload and USGS when existing data */}
+        {/* What happens to measurements already in the region */}
         {hasExistingData && (dataSource === 'upload' || dataSource === 'usgs' || dataSource === 'wqp') && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Import Mode</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setImportMode('append'); if (dataSource === 'usgs') setUsgsMode('quick-refresh'); }}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                  importMode === 'append' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                Append
-              </button>
-              <button
-                onClick={() => { setImportMode('replace'); if (dataSource === 'usgs') setUsgsMode('fresh'); }}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                  importMode === 'replace' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                Replace
-              </button>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Measurements already in this region</label>
+            <div className="space-y-2">
+              {([
+                ['add', 'Add new only', 'Keep what is there. A measurement for a well and date that already has one is skipped.'],
+                ['update', 'Add and update', 'Add new measurements, and overwrite the value of any that match a well and date already there.'],
+                ['replace', 'Replace all', `Delete the existing ${selectedTypes.map(c => dataTypes.find(d => d.code === c)?.name || c).join(', ')} measurements and keep only this import.`],
+              ] as const).map(([mode, label, help]) => (
+                <label key={mode} className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" name="existing-mode" checked={existingMode === mode}
+                    onChange={() => setExistingMode(mode)} className="text-blue-600 mt-0.5" />
+                  <div>
+                    <span className={`text-sm font-medium ${mode === 'replace' ? 'text-red-700' : 'text-slate-700'}`}>{label}</span>
+                    <p className="text-xs text-slate-500">{help}</p>
+                  </div>
+                </label>
+              ))}
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              {importMode === 'append'
-                ? 'New measurements will be added. Duplicates (by well_id + date) are skipped.'
-                : `Replaces data for selected type(s): ${selectedTypes.join(', ')}`}
-            </p>
           </div>
         )}
 
@@ -1684,29 +1640,6 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
                   )}
                 </div>
               </div>
-            )}
-            {hasExistingData && importMode === 'append' && (
-              <>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Refresh Mode</label>
-              <div className="space-y-2 mb-4">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input type="radio" name="usgs-mode" checked={usgsMode === 'quick-refresh'}
-                    onChange={() => setUsgsMode('quick-refresh')} className="text-blue-600 mt-0.5" />
-                  <div>
-                    <span className="text-sm text-slate-700 font-medium">Quick Refresh</span>
-                    <p className="text-xs text-slate-500">Fetch all, keep only records newer than latest existing date.</p>
-                  </div>
-                </label>
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input type="radio" name="usgs-mode" checked={usgsMode === 'full-refresh'}
-                    onChange={() => setUsgsMode('full-refresh')} className="text-blue-600 mt-0.5" />
-                  <div>
-                    <span className="text-sm text-slate-700 font-medium">Full Refresh</span>
-                    <p className="text-xs text-slate-500">Fetch all, merge/deduplicate with existing data. Catches backfills.</p>
-                  </div>
-                </label>
-              </div>
-              </>
             )}
             {/* API key */}
             <div className="mb-3">
@@ -2189,9 +2122,6 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
             <p className="text-sm text-slate-700 mb-1">
               {dataSpan.minDate} to {dataSpan.maxDate} — {dataSpan.totalRecords.toLocaleString()} measurements across {dataSpan.wellCount} wells
             </p>
-            {dataSource === 'usgs' && usgsMode === 'quick-refresh' && quickRefreshCutoff && (
-              <p className="text-xs text-amber-700 mb-2">Cutoff: showing only records after {quickRefreshCutoff}</p>
-            )}
             {dataSource === 'usgs' && (
               <div className="flex items-end gap-2 mt-2">
                 <div className="flex-1">
@@ -2339,7 +2269,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       {showReplaceConfirm && (
         <ConfirmDialog
           title="Replace Measurements?"
-          message={`This will replace all existing measurement data for: ${selectedTypes.join(', ')}. This cannot be undone.`}
+          message={`This deletes the existing ${selectedTypes.map(c => dataTypes.find(d => d.code === c)?.name || c).join(', ')} measurements in this region and keeps only this import. It cannot be undone.`}
           confirmLabel="Replace"
           variant="danger"
           onConfirm={() => { setShowReplaceConfirm(false); doSave(); }}
