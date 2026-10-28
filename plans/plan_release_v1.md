@@ -66,7 +66,14 @@ and a downloaded zip is the backup they restore from. The BYOS / Supabase plans 
 - Light mode checkbox sits above the backup bar for now; Phase 4 moves it into the DISPLAY section, and into
   Settings once there is one.
 
-## Phase 4: layout closer to GRACE
+## Phase 4: layout closer to GRACE (done 2026-10-28)
+
+As built: the 2x2 grid is Add Data / Back up / Restore / Settings, with the backup status as a note under it. The
+DISPLAY section is labelled MAP and carries the five label/well checkboxes plus Light mode in GRACE's two-column
+grid, "Wells with at least N measurements" and "Measured in YYYY to YYYY". Label font size moved to Settings, which
+also shows the site's storage use and offers "Delete all My Data". Map display choices persist in localStorage
+(`aqx-map-display`), except the date filter. The top bar lost the data type select and the Manage Data button.
+
 
 Left panel, top to bottom:
 1. GEOGLOWS wordmark, sign-in, app title (drop "v1").

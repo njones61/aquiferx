@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import L from 'leaflet';
 import { Search } from 'lucide-react';
-import { Region, Aquifer, Well, Measurement } from '../types';
+import { Region, Aquifer, Well, Measurement, MapDisplay } from '../types';
 import { isPointInGeoJSON } from '../utils/geo';
 import { useRasterFrame } from '../contexts/RasterFrameContext';
 
@@ -71,8 +71,8 @@ interface MapViewProps {
   onAquiferClick: (a: Aquifer) => void;
   onWellClick: (w: Well, shiftKey: boolean) => void;
   onWellBoxSelect: (wells: Well[]) => void;
-  onShowWellsChange?: (show: boolean) => void;
-  onShowWellIdsChange?: (show: boolean) => void;
+  display: MapDisplay;
+  onDisplayChange: (patch: Partial<MapDisplay>) => void;
   onDateFilterChange?: (filter: { minYear: number; maxYear: number } | null) => void;
 }
 
@@ -96,8 +96,8 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   onAquiferClick,
   onWellClick,
   onWellBoxSelect,
-  onShowWellsChange,
-  onShowWellIdsChange,
+  display,
+  onDisplayChange,
   onDateFilterChange
 }, ref) => {
   // Per-frame active wells: frame date tested against precomputed ranges.
@@ -202,20 +202,14 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [isBasemapMenuOpen]);
-  const [minObs, setMinObs] = useState(0);
-  const [showAquiferNames, setShowAquiferNames] = useState(true);
-  const [showAquiferIds, setShowAquiferIds] = useState(false);
-  const [showWellIds, setShowWellIds] = useState(false);
-  const [showWellNames, setShowWellNames] = useState(false);
-  const [showWells, setShowWells] = useState(true);
-  const [filterDatesEnabled, setFilterDatesEnabled] = useState(false);
-  const [filterMinYear, setFilterMinYear] = useState<string>('');
-  const [filterMaxYear, setFilterMaxYear] = useState<string>('');
+  const {
+    minObs, showAquiferNames, showAquiferIds, showWellIds, showWellNames, showWells,
+    filterDates: filterDatesEnabled, filterMinYear, filterMaxYear, labelFontSize,
+  } = display;
   // "Applied" values only update when input reaches 4 digits — avoids flicker mid-edit
   const [appliedMinYear, setAppliedMinYear] = useState<number | null>(null);
   const [appliedMaxYear, setAppliedMaxYear] = useState<number | null>(null);
   const filterDatesInitialized = useRef(false);
-  const [labelFontSize, setLabelFontSize] = useState(9);
 
   // Compute default date filter bounds from per-well stats
   const defaultFilterMinYear = useMemo(() => {
@@ -244,16 +238,17 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   useEffect(() => {
     if (filterDatesEnabled && !filterDatesInitialized.current) {
       filterDatesInitialized.current = true;
+      const patch: Partial<MapDisplay> = {};
       if (!filterMinYear) {
-        const defMin = String(defaultFilterMinYear);
-        setFilterMinYear(defMin);
+        patch.filterMinYear = String(defaultFilterMinYear);
         setAppliedMinYear(defaultFilterMinYear);
       }
       if (!filterMaxYear) {
         const curYear = new Date().getFullYear();
-        setFilterMaxYear(String(curYear));
+        patch.filterMaxYear = String(curYear);
         setAppliedMaxYear(curYear);
       }
+      if (Object.keys(patch).length) onDisplayChange(patch);
     }
     if (!filterDatesEnabled) {
       filterDatesInitialized.current = false;
@@ -303,12 +298,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         wellLabelLayerRef.current.removeFrom(mapRef.current);
       }
     }
-    onShowWellsChange?.(showWells);
-  }, [showWells, onShowWellsChange]);
-
-  useEffect(() => {
-    onShowWellIdsChange?.(showWellIds);
-  }, [showWellIds, onShowWellIdsChange]);
+  }, [showWells]);
 
   // Box-drag selection state
   // Well search state
@@ -882,90 +872,6 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           )}
         </div>
       )}
-
-      {/* Map Options Panel */}
-      <div className="rfs-card absolute bottom-2 left-2 z-[90] flex flex-col gap-1.5 px-2 py-1.5">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <label htmlFor="min-obs" className="text-xs font-medium text-[var(--text-dim)] whitespace-nowrap">Min obs</label>
-            <input
-              id="min-obs"
-              type="number"
-              min={0}
-              step={1}
-              value={minObs}
-              onChange={(e) => setMinObs(Math.max(0, parseInt(e.target.value) || 0))}
-              className="rfs-field w-14 text-xs text-center px-1 py-0.5"
-            />
-          </div>
-          <div className="flex items-center gap-1">
-            <label htmlFor="label-font" className="text-xs font-medium text-[var(--text-dim)] whitespace-nowrap">Font</label>
-            <input
-              id="label-font"
-              type="number"
-              min={6}
-              max={24}
-              step={1}
-              value={labelFontSize}
-              onChange={(e) => setLabelFontSize(Math.max(6, Math.min(24, parseInt(e.target.value) || 9)))}
-              className="rfs-field w-12 text-xs text-center px-1 py-0.5"
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={filterDatesEnabled} onChange={(e) => setFilterDatesEnabled(e.target.checked)} className="rfs-check w-3 h-3" />
-            <span className="text-xs font-medium text-[var(--text-dim)] whitespace-nowrap">Filter dates:</span>
-          </label>
-          <input
-            type="number"
-            min={1800}
-            max={2200}
-            step={1}
-            placeholder="min"
-            value={filterMinYear}
-            onChange={(e) => setFilterMinYear(e.target.value)}
-            disabled={!filterDatesEnabled}
-            className="rfs-field w-14 text-xs text-center px-1 py-0.5"
-          />
-          <span className="text-xs text-[var(--text-faint)]">–</span>
-          <input
-            type="number"
-            min={1800}
-            max={2200}
-            step={1}
-            placeholder="max"
-            value={filterMaxYear}
-            onChange={(e) => setFilterMaxYear(e.target.value)}
-            disabled={!filterDatesEnabled}
-            className="rfs-field w-14 text-xs text-center px-1 py-0.5"
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showAquiferNames} onChange={(e) => setShowAquiferNames(e.target.checked)} className="rfs-check w-3 h-3" />
-            <span className="text-xs text-[var(--text-dim)]">Aquifer names</span>
-          </label>
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showAquiferIds} onChange={(e) => setShowAquiferIds(e.target.checked)} className="rfs-check w-3 h-3" />
-            <span className="text-xs text-[var(--text-dim)]">Aquifer IDs</span>
-          </label>
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showWells} onChange={(e) => setShowWells(e.target.checked)} className="rfs-check w-3 h-3" />
-            <span className="text-xs text-[var(--text-dim)]">Wells</span>
-          </label>
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showWellNames} onChange={(e) => setShowWellNames(e.target.checked)} className="rfs-check w-3 h-3" />
-            <span className="text-xs text-[var(--text-dim)]">Well names</span>
-          </label>
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showWellIds} onChange={(e) => setShowWellIds(e.target.checked)} className="rfs-check w-3 h-3" />
-            <span className="text-xs text-[var(--text-dim)]">Well IDs</span>
-          </label>
-        </div>
-      </div>
 
       {/* Basemap picker, built like the RFS one: the button stays put and its
           menu opens to the left, rather than the button being replaced by a

@@ -272,3 +272,33 @@ export interface ImputationModelMeta {
   createdAt: string;
   wellMetrics: Record<string, ImputationWellMetrics>;
 }
+
+/** What the map draws, set from the DISPLAY section of the left panel. */
+export interface MapDisplay {
+  showAquiferNames: boolean;
+  showAquiferIds: boolean;
+  showWells: boolean;
+  showWellNames: boolean;
+  showWellIds: boolean;
+  /** Hide wells with fewer measurements than this. */
+  minObs: number;
+  /** Show only wells whose record overlaps filterMinYear..filterMaxYear. Years are
+      strings because they are typed; a filter applies once a year has 4 digits. */
+  filterDates: boolean;
+  filterMinYear: string;
+  filterMaxYear: string;
+  labelFontSize: number;
+}
+
+export const DEFAULT_MAP_DISPLAY: MapDisplay = {
+  showAquiferNames: true,
+  showAquiferIds: false,
+  showWells: true,
+  showWellNames: false,
+  showWellIds: false,
+  minObs: 0,
+  filterDates: false,
+  filterMinYear: '',
+  filterMaxYear: '',
+  labelFontSize: 9,
+};

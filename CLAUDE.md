@@ -32,7 +32,9 @@
 - `components/import/` — ImportDataHub, RegionImporter, AquiferImporter, WellImporter, MeasurementImporter, DataTypeEditor, ColumnMapperModal, ConfirmDialog
 - `public/data/catalog_wq.json` — global water quality parameter catalog (~38 entries with WQP mapping + MCL/WHO)
 - `services/gldasFetch.ts` — imputation's soil moisture (NOAA CPC v2, 1948 on) read with zarrita from `cdn.apps.geoglows.org/aqx/cpc-soil-moisture-0.5-v1.zarr`, built by `scripts/soil_moisture_store.py`
-- `components/BackupBar.tsx` — panel footer: backup status, Back up, Restore
+- `components/PanelActions.tsx` — the panel's Add Data / Back up / Restore / Settings grid, backup status note, restore dialog
+- `components/SettingsDialog.tsx` — light mode, map label size, storage use, Delete all My Data
+- Map display options (`MapDisplay` in types.ts) live in App, are set from the panel's MAP section and read by MapView
 - `vite.config.ts` — strips non-sample regions from `dist/`; dev-only `/local-zarr/` server for previewing a zarr store (`LOCAL_ZARR_DIR`)
 - `scripts/make-backup.mjs` — package `public/data` folders as a backup zip to Restore into My Data
 

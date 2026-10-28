@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Download, Upload, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Download, Upload, Loader2, AlertTriangle, CheckCircle2, Plus, Settings } from 'lucide-react';
 import {
   BackupStatus, getBackupStatus, onBackupStatus, downloadBackup, planRestore, applyRestore, RestorePlan,
 } from '../services/dataStore';
 
-interface BackupBarProps {
+interface PanelActionsProps {
   /** Whether there is any My Data to back up. */
   hasMyData: boolean;
   onDataChanged: () => void;
+  onAddData: () => void;
+  onOpenSettings: () => void;
 }
 
 const ago = (iso: string) => {
@@ -21,10 +23,11 @@ const ago = (iso: string) => {
 };
 
 /**
- * The foot of the left panel: when My Data was last downloaded, how much has
- * changed since, and the two buttons that move it in and out of the browser.
+ * The panel's 2x2 action grid (Add Data, Back up, Restore, Settings), with a
+ * line under it saying when My Data was last downloaded and how much has
+ * changed since. Restore's confirm dialog lives here too.
  */
-const BackupBar: React.FC<BackupBarProps> = ({ hasMyData, onDataChanged }) => {
+const PanelActions: React.FC<PanelActionsProps> = ({ hasMyData, onDataChanged, onAddData, onOpenSettings }) => {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<RestorePlan | null>(null);
@@ -74,22 +77,16 @@ const BackupBar: React.FC<BackupBarProps> = ({ hasMyData, onDataChanged }) => {
   const unsaved = status && status.changesSinceBackup > 0;
   const line = !status
     ? ''
-    : !hasMyData
-      ? 'My Data is empty'
-      : status.lastBackupAt
+    : status.lastBackupAt
         ? `Backed up ${ago(status.lastBackupAt)}${unsaved ? ` · ${status.changesSinceBackup} change${status.changesSinceBackup === 1 ? '' : 's'} since` : ''}`
         : 'Not backed up yet';
 
   return (
-    <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--surface2)]">
-      <p
-        className={`text-[11px] mb-2 flex items-center gap-1.5 ${hasMyData && (unsaved || !status?.lastBackupAt) ? 'text-[var(--warn-text)]' : 'text-[var(--text-faint)]'}`}
-        title="My Data lives in this browser. Download a backup to keep a copy you can restore on any computer."
-      >
-        {hasMyData && (unsaved || !status?.lastBackupAt) && <AlertTriangle size={12} />}
-        {line}
-      </p>
-      <div className="grid grid-cols-2 gap-2">
+    <>
+      <div className="rfs-actions">
+        <button className="rfs-btn" onClick={onAddData} title="Add regions, aquifers, wells and measurements to My Data">
+          <Plus size={14} /> Add Data
+        </button>
         <button className="rfs-btn" onClick={handleBackup} disabled={!hasMyData || busy}
           title="Download all of My Data as a zip file">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Back up
@@ -98,8 +95,20 @@ const BackupBar: React.FC<BackupBarProps> = ({ hasMyData, onDataChanged }) => {
           title="Load a backup zip into My Data">
           <Upload size={14} /> Restore
         </button>
+        <button className="rfs-btn" onClick={onOpenSettings}>
+          <Settings size={14} /> Settings
+        </button>
         <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={handleFile} />
       </div>
+      {hasMyData && line && (
+        <p
+          className={`rfs-note flex items-center gap-1.5 ${unsaved || !status?.lastBackupAt ? 'warn' : ''}`}
+          title="My Data lives in this browser. Download a backup to keep a copy you can restore on any computer."
+        >
+          {(unsaved || !status?.lastBackupAt) && <AlertTriangle size={12} className="flex-shrink-0" />}
+          {line}
+        </p>
+      )}
 
       {plan && (
         <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -156,8 +165,8 @@ const BackupBar: React.FC<BackupBarProps> = ({ hasMyData, onDataChanged }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
-export default BackupBar;
+export default PanelActions;

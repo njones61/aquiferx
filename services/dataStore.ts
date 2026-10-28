@@ -355,6 +355,32 @@ export async function deleteFolder(folder: string): Promise<void> {
   announceStatus();
 }
 
+/** Empty My Data entirely, backup status included. Sample Data is untouched. */
+export async function deleteAllMyData(): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction([FILES, SUMMARIES, META], 'readwrite');
+  tx.objectStore(FILES).clear();
+  tx.objectStore(SUMMARIES).clear();
+  tx.objectStore(META).clear();
+  await done(tx);
+  announceStatus();
+}
+
+export interface StorageInfo {
+  /** Bytes this site uses in the browser, My Data and caches together; null if the browser won't say. */
+  usage: number | null;
+  /** Whether the browser has agreed not to evict it under storage pressure; null if unknown. */
+  persisted: boolean | null;
+}
+
+export async function getStorageInfo(): Promise<StorageInfo> {
+  const [estimate, persisted] = await Promise.all([
+    navigator.storage?.estimate?.().catch(() => null),
+    navigator.storage?.persisted?.().catch(() => null),
+  ]);
+  return { usage: estimate?.usage ?? null, persisted: persisted ?? null };
+}
+
 async function listSummaries(regionId: string, kind: 'raster' | 'model'): Promise<any[]> {
   const index = await loadSampleIndex();
   if (isSample(regionId)) {

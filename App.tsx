@@ -1,10 +1,11 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Layers, Map as MapIcon, Database, ChevronRight, Activity, Wand2, Grid3x3, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
-import { Region, Aquifer, Well, Measurement, DataType, RasterAnalysisResult, RasterAnalysisMeta, CrossSectionProfile, ImputationModelResult, ImputationModelMeta } from './types';
+import { Layers, Map as MapIcon, ChevronRight, Activity, Wand2, Grid3x3, Upload, Loader2, Download, Table, BarChart3, Maximize2, X } from 'lucide-react';
+import { Region, Aquifer, Well, Measurement, DataType, RasterAnalysisResult, RasterAnalysisMeta, CrossSectionProfile, ImputationModelResult, ImputationModelMeta, MapDisplay, DEFAULT_MAP_DISPLAY } from './types';
 import { loadAllData } from './services/dataLoader';
 import { toCsv, escapeCsvField, WELLS_CSV_HEADERS } from './services/importUtils';
 import { saveFiles, deleteFile, deleteFolder, readJson, renameAnalysis, downloadRegion, copyToMyData, DataSource } from './services/dataStore';
+import SettingsDialog from './components/SettingsDialog';
 import ConfirmDialog from './components/import/ConfirmDialog';
 import { slugify } from './utils/strings';
 import MapView, { MapViewHandle } from './components/MapView';
@@ -58,6 +59,7 @@ const App: React.FC = () => {
   const [selectedWells, setSelectedWells] = useState<Well[]>([]);
   const [isDataManagerOpen, setIsDataManagerOpen] = useState(false);
   const [isDataEditorOpen, setIsDataEditorOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showGSE, setShowGSE] = useState(false);
   const [showTrendLine, setShowTrendLine] = useState(false);
   const [showSmooth, setShowSmooth] = useState(false);
@@ -66,9 +68,23 @@ const App: React.FC = () => {
   const [trendColors, setTrendColors] = useState<Map<string, string> | null>(null);
   const [aquiferTrendColors, setAquiferTrendColors] = useState<Map<string, string> | null>(null);
   const [showTrends, setShowTrends] = useState(false);
-  const [showWellsOnMap, setShowWellsOnMap] = useState(true);
+  const [mapDisplay, setMapDisplay] = useState<MapDisplay>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('aqx-map-display') || '{}');
+      // The date filter is about one region's record, so it starts off each visit
+      return { ...DEFAULT_MAP_DISPLAY, ...saved, filterDates: false, filterMinYear: '', filterMaxYear: '' };
+    } catch { return DEFAULT_MAP_DISPLAY; }
+  });
+  const updateMapDisplay = useCallback((patch: Partial<MapDisplay>) => {
+    setMapDisplay(prev => {
+      const next = { ...prev, ...patch };
+      try { localStorage.setItem('aqx-map-display', JSON.stringify(next)); } catch { /* not remembered */ }
+      return next;
+    });
+  }, []);
+  const showWellsOnMap = mapDisplay.showWells;
+  const showWellIdsOnMap = mapDisplay.showWellIds;
   const [dateFilter, setDateFilter] = useState<{ minYear: number; maxYear: number } | null>(null);
-  const [showWellIdsOnMap, setShowWellIdsOnMap] = useState(false);
   const [trendWindowYears, setTrendWindowYears] = useState(30);
   // Memoized: an inline `Date.now() - ...` prop changes every render, which
   // forced TimeSeriesChart to recompute regressions and rebuild the whole
@@ -1040,7 +1056,17 @@ const App: React.FC = () => {
     );
   }
 
-  const hasMultipleDataTypes = selectedRegion && selectedRegion.effectiveDataTypes.length > 1;
+  const handleDataTypeChange = (newType: string) => {
+    setSelectedDataType(newType);
+    // Unload raster/model if its data type no longer matches
+    if (rasterResult && rasterResult.dataType !== newType) {
+      setRasterResult(null);
+      setCompareRasterResults([]);
+    }
+    if (selectedModel && selectedModel.dataType !== newType) {
+      setSelectedModel(null);
+    }
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
@@ -1053,6 +1079,11 @@ const App: React.FC = () => {
         onCopyToMyData={regionId => handleCopyToMyData(regionId)}
         onAddData={() => { setDataView('mine'); setIsDataManagerOpen(true); }}
         onDataChanged={() => { handleDataChanged(); setDataView('mine'); }}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        selectedDataType={selectedDataType}
+        onDataTypeChange={handleDataTypeChange}
+        display={mapDisplay}
+        onDisplayChange={updateMapDisplay}
         selectedRegion={selectedRegion}
         setSelectedRegion={(r) => {
           setSelectedRegion(r);
@@ -1160,28 +1191,6 @@ const App: React.FC = () => {
             )}
           </div>
           <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
-            {hasMultipleDataTypes && (
-              <select
-                value={selectedDataType}
-                onChange={(e) => {
-                  const newType = e.target.value;
-                  setSelectedDataType(newType);
-                  // Unload raster/model if its data type no longer matches
-                  if (rasterResult && rasterResult.dataType !== newType) {
-                    setRasterResult(null);
-                    setCompareRasterResults([]);
-                  }
-                  if (selectedModel && selectedModel.dataType !== newType) {
-                    setSelectedModel(null);
-                  }
-                }}
-                className="rfs-field px-2 py-1.5 text-sm"
-              >
-                {selectedRegion!.effectiveDataTypes.map(dt => (
-                  <option key={dt.code} value={dt.code}>{dt.name} ({dt.unit})</option>
-                ))}
-              </select>
-            )}
             {selectedRegion && (
               <>
                 <button
@@ -1231,14 +1240,6 @@ const App: React.FC = () => {
                 <Wand2 size={20} className="text-[#fbbf24]" />
               </button>
             )}
-            <button
-              onClick={() => { setDataView('mine'); setIsDataManagerOpen(true); }}
-              className="rfs-btn icon"
-              data-tip="Manage Data"
-              aria-label="Manage Data"
-            >
-              <Database size={20} className="text-[#60a5fa]" />
-            </button>
           </div>
         </header>
 
@@ -1280,8 +1281,8 @@ const App: React.FC = () => {
               onAquiferClick={setSelectedAquifer}
               onWellClick={handleWellClick}
               onWellBoxSelect={handleWellBoxSelect}
-              onShowWellsChange={setShowWellsOnMap}
-              onShowWellIdsChange={setShowWellIdsOnMap}
+              display={mapDisplay}
+              onDisplayChange={updateMapDisplay}
               onDateFilterChange={setDateFilter}
             />
             {/* Well legend — shown when aquifer selected, wells visible, and trends not active */}
@@ -1785,6 +1786,24 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {isSettingsOpen && (
+        <SettingsDialog
+          display={mapDisplay}
+          onDisplayChange={updateMapDisplay}
+          hasMyData={hasMyData}
+          onDataChanged={() => {
+            // Only "Delete all My Data" changes data from here, so a My Data selection is gone
+            if (selectedRegion?.source === 'mine') {
+              setSelectedRegion(null);
+              setSelectedAquifer(null);
+              setSelectedWells([]);
+            }
+            handleDataChanged();
+          }}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      )}
 
       {copyPrompt && (
         <ConfirmDialog
