@@ -80,6 +80,12 @@ export interface MapViewHandle {
   getMap(): L.Map | null;
 }
 
+// A region or aquifer with an empty or missing outline has infinite or NaN
+// bounds, and one that is a single point has no extent; Leaflet throws when
+// fitting the view to either.
+const hasArea = (b: [number, number, number, number]) =>
+  b.every(Number.isFinite) && (b[2] > b[0] || b[3] > b[1]);
+
 const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   regions,
   aquifers,
@@ -494,8 +500,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       regionLayerRef.current?.addLayer(layer);
     });
 
-    // A region with no usable outline has NaN bounds, which Leaflet throws on.
-    const bounded = regions.filter(r => r.bounds.every(Number.isFinite));
+    const bounded = regions.filter(r => hasArea(r.bounds));
     if (!selectedRegion && bounded.length > 0) {
       const allBounds = L.latLngBounds(
         bounded.map(r => [
@@ -552,7 +557,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     if (selectedRegion) {
       const regionChanged = selectedRegion.id !== prevSelectedRegionIdRef.current;
       const aquiferDeselected = !selectedAquifer && prevSelectedAquiferIdRef.current !== null;
-      if ((regionChanged || aquiferDeselected) && !selectedAquifer) {
+      if ((regionChanged || aquiferDeselected) && !selectedAquifer && hasArea(selectedRegion.bounds)) {
         const rBounds = L.latLngBounds(
           [selectedRegion.bounds[0], selectedRegion.bounds[1]],
           [selectedRegion.bounds[2], selectedRegion.bounds[3]]
@@ -635,7 +640,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       });
 
       const aquiferChanged = selectedAquifer.id !== prevSelectedAquiferIdRef.current;
-      if (aquiferChanged) {
+      if (aquiferChanged && hasArea(selectedAquifer.bounds)) {
         const aBounds = L.latLngBounds(
           [selectedAquifer.bounds[0], selectedAquifer.bounds[1]],
           [selectedAquifer.bounds[2], selectedAquifer.bounds[3]]
