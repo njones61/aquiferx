@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, ChevronRight, ChevronLeft, Upload, CheckCircle2, Loader2 } from 'lucide-react';
 import { RegionMeta } from '../../types';
 import { processUploadedFile, UploadedFile, getFolderName, saveFiles } from '../../services/importUtils';
@@ -23,6 +23,15 @@ const RegionImporter: React.FC<RegionImporterProps> = ({ existingRegionIds, onCo
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // The id only has to be unique; a name already in use, or one a sample
+  // region has, gets a numbered id rather than an error. It is the region's
+  // folder name in a backup or download zip, so the form shows it.
+  const [sampleIds, setSampleIds] = useState<Set<string>>(new Set());
+  useEffect(() => { reservedRegionIds().then(setSampleIds).catch(() => {}); }, []);
+  const idFor = (samples: Set<string>) =>
+    uniqueId(getFolderName(regionName) || 'region', new Set([...existingRegionIds, ...samples]));
+  const previewId = idFor(sampleIds);
+
   const validateName = (name: string) => {
     if (!name.trim()) { setNameError('Region name is required'); return false; }
     setNameError('');
@@ -45,10 +54,7 @@ const RegionImporter: React.FC<RegionImporterProps> = ({ existingRegionIds, onCo
     setIsSaving(true);
     setError('');
     try {
-      // The id only has to be unique; a name already in use, or one a sample
-      // region has, gets a numbered id rather than an error
-      const taken = new Set([...existingRegionIds, ...(await reservedRegionIds())]);
-      const folderId = uniqueId(getFolderName(regionName) || 'region', taken);
+      const folderId = idFor(await reservedRegionIds());
       const regionFeatures = boundaryFile.data.type === 'FeatureCollection'
         ? boundaryFile.data.features
         : [boundaryFile.data];
@@ -117,6 +123,11 @@ const RegionImporter: React.FC<RegionImporterProps> = ({ existingRegionIds, onCo
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               />
               {nameError && <p className="mt-1 text-xs text-red-600">{nameError}</p>}
+              {regionName.trim() && !nameError && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Folder name in backups: <span className="font-mono">{previewId}</span>
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Length Unit</label>
