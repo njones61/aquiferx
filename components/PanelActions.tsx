@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Download, Upload, Loader2, AlertTriangle, CheckCircle2, Plus, Settings } from 'lucide-react';
+import { Download, Upload, Loader2, AlertTriangle, CheckCircle2, Plus } from 'lucide-react';
 import {
   BackupStatus, getBackupStatus, onBackupStatus, downloadBackup, planRestore, applyRestore, RestorePlan,
 } from '../services/dataStore';
@@ -9,7 +9,6 @@ interface PanelActionsProps {
   hasMyData: boolean;
   onDataChanged: () => void;
   onAddData: () => void;
-  onOpenSettings: () => void;
 }
 
 const ago = (iso: string) => {
@@ -23,11 +22,12 @@ const ago = (iso: string) => {
 };
 
 /**
- * The panel's 2x2 action grid (Add Data, Back up, Restore, Settings), with a
- * line under it saying when My Data was last downloaded and how much has
- * changed since. Restore's confirm dialog lives here too.
+ * My Data's row of actions (Add Data, Back up, Restore), shown above the region
+ * tree while My Data is selected, with a line under it saying when My Data was
+ * last downloaded and how much has changed since. Restore's confirm dialog
+ * lives here too.
  */
-const PanelActions: React.FC<PanelActionsProps> = ({ hasMyData, onDataChanged, onAddData, onOpenSettings }) => {
+const PanelActions: React.FC<PanelActionsProps> = ({ hasMyData, onDataChanged, onAddData }) => {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<RestorePlan | null>(null);
@@ -94,9 +94,6 @@ const PanelActions: React.FC<PanelActionsProps> = ({ hasMyData, onDataChanged, o
         <button className="rfs-btn" onClick={() => fileRef.current?.click()}
           title="Load a backup zip into My Data">
           <Upload size={14} /> Restore
-        </button>
-        <button className="rfs-btn" onClick={onOpenSettings}>
-          <Settings size={14} /> Settings
         </button>
         <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={handleFile} />
       </div>

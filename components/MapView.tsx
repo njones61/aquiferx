@@ -494,9 +494,11 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       regionLayerRef.current?.addLayer(layer);
     });
 
-    if (!selectedRegion && regions.length > 0) {
+    // A region with no usable outline has NaN bounds, which Leaflet throws on.
+    const bounded = regions.filter(r => r.bounds.every(Number.isFinite));
+    if (!selectedRegion && bounded.length > 0) {
       const allBounds = L.latLngBounds(
-        regions.map(r => [
+        bounded.map(r => [
           L.latLng(r.bounds[0], r.bounds[1]),
           L.latLng(r.bounds[2], r.bounds[3])
         ]).flat()

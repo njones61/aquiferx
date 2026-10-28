@@ -1,10 +1,10 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Region, Aquifer, RasterAnalysisMeta, ImputationModelMeta, MapDisplay } from '../types';
-import { MapPin, Droplets, MoreVertical, Pencil, Trash2, Download, Layers, Loader2, Info, Check, X as XIcon, ChevronRight, ChevronDown, Activity, Eye, EyeOff, Copy, Plus, Upload } from 'lucide-react';
+import { MapPin, Droplets, MoreVertical, Pencil, Trash2, Download, Layers, Loader2, Info, Check, X as XIcon, ChevronRight, ChevronDown, Activity, Eye, EyeOff, Copy, Plus, Upload, Settings } from 'lucide-react';
 import type { DataSource } from '../services/dataStore';
 import PanelActions from './PanelActions';
-import { setTheme, useTheme } from '../utils/theme';
+import { useTheme } from '../utils/theme';
 import { mountGeoglowsAuth, unmountGeoglowsAuth } from '../services/geoglowsAuth';
 
 // The GEOGLOWS wordmark and where it links. Env-driven so a fork can point the
@@ -1174,6 +1174,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* Filled by @geoglows/geoglows-auth — see services/geoglowsAuth.ts.
               React never renders children here, so it leaves the slot alone. */}
           <div id="auth-action" />
+          <button className="rfs-icon-btn" onClick={onOpenSettings} title="Settings" aria-label="Settings">
+            <Settings size={18} />
+          </button>
         </div>
         <h1 className="rfs-title">Aquifer Analyst</h1>
       </header>
@@ -1193,96 +1196,16 @@ const Sidebar: React.FC<SidebarProps> = ({
           ))}
         </div>
 
-        <PanelActions
-          hasMyData={hasMyData}
-          onDataChanged={onDataChanged}
-          onAddData={onAddData}
-          onOpenSettings={onOpenSettings}
-        />
-
-        <label className="rfs-label rfs-label-spaced" htmlFor="data-type-select">Data type</label>
-        <select
-          id="data-type-select"
-          className="rfs-select"
-          value={selectedRegion ? selectedDataType : ''}
-          onChange={e => onDataTypeChange(e.target.value)}
-          disabled={!selectedRegion || selectedRegion.effectiveDataTypes.length < 2}
-          title={selectedRegion ? undefined : 'Select a region to choose among its data types'}
-        >
-          {selectedRegion
-            ? selectedRegion.effectiveDataTypes.map(dt => (
-                <option key={dt.code} value={dt.code}>{dt.name} ({dt.unit})</option>
-              ))
-            : <option value="">Water Table Elevation</option>}
-        </select>
-
-        <p className="rfs-label rfs-label-spaced">Map</p>
-        <div className="rfs-checks-pairs">
-          {([
-            ['showAquiferNames', 'Aquifer names'],
-            ['showAquiferIds', 'Aquifer IDs'],
-            ['showWellNames', 'Well names'],
-            ['showWellIds', 'Well IDs'],
-            ['showWells', 'Wells'],
-          ] as const).map(([key, label]) => (
-            <label key={key} className="rfs-check">
-              <input type="checkbox" checked={display[key]} onChange={e => onDisplayChange({ [key]: e.target.checked })} />
-              <span>{label}</span>
-            </label>
-          ))}
-          <label className="rfs-check">
-            <input type="checkbox" checked={theme === 'light'} onChange={e => setTheme(e.target.checked ? 'light' : 'dark')} />
-            <span>Light mode</span>
-          </label>
-        </div>
-        <label className="rfs-field-row" title="Hide wells with fewer measurements than this">
-          <span>Wells with at least</span>
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={display.minObs}
-            onChange={e => onDisplayChange({ minObs: Math.max(0, parseInt(e.target.value) || 0) })}
-            className="rfs-field"
-          />
-          <span>measurements</span>
-        </label>
-        <div className="rfs-field-row" title="Show only wells measured at some point in these years">
-          <label className="rfs-check !p-0">
-            <input type="checkbox" checked={display.filterDates} onChange={e => onDisplayChange({ filterDates: e.target.checked })} />
-            <span>Measured in</span>
-          </label>
-          <input
-            type="number"
-            min={1800}
-            max={2200}
-            placeholder="from"
-            aria-label="From year"
-            value={display.filterMinYear}
-            onChange={e => onDisplayChange({ filterMinYear: e.target.value })}
-            disabled={!display.filterDates}
-            className="rfs-field"
-          />
-          <span className="text-[var(--text-faint)]">to</span>
-          <input
-            type="number"
-            min={1800}
-            max={2200}
-            placeholder="to"
-            aria-label="To year"
-            value={display.filterMaxYear}
-            onChange={e => onDisplayChange({ filterMaxYear: e.target.value })}
-            disabled={!display.filterDates}
-            className="rfs-field"
-          />
-        </div>
+        {dataView === 'mine'
+          ? <PanelActions hasMyData={hasMyData} onDataChanged={onDataChanged} onAddData={onAddData} />
+          : <p className="rfs-note">Example regions to explore. To change one, open its menu and choose Copy to My Data.</p>}
       </div>
 
       <p className="rfs-eyebrow">Regions</p>
 
       <div
         ref={treeRef}
-        className="rfs-scroll flex-1 min-h-[180px] overflow-y-auto pb-2"
+        className="rfs-scroll flex-1 min-h-[160px] overflow-y-auto pb-2"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >
@@ -1306,6 +1229,86 @@ const Sidebar: React.FC<SidebarProps> = ({
           <p className="text-xs italic px-4 py-2 text-[var(--text-faint)]">No sample regions could be loaded.</p>
         )}
       </div>
+
+      {/* Options for the region on the map; nothing to set until one is open. */}
+      {selectedRegion && (
+        <div className="rfs-options">
+          {selectedRegion.effectiveDataTypes.length > 1 && (
+            <>
+              <label className="rfs-label" htmlFor="data-type-select" title="The measured quantity the map and charts show">Data type</label>
+              <select
+                id="data-type-select"
+                className="rfs-select mb-3"
+                value={selectedDataType}
+                onChange={e => onDataTypeChange(e.target.value)}
+              >
+                {selectedRegion.effectiveDataTypes.map(dt => (
+                  <option key={dt.code} value={dt.code}>{dt.name} ({dt.unit})</option>
+                ))}
+              </select>
+            </>
+          )}
+
+          <p className="rfs-label">Show on map</p>
+          <div className="rfs-checks-pairs">
+            {([
+              ['showWells', 'Wells'],
+              ['showAquiferNames', 'Aquifer names'],
+              ['showWellNames', 'Well names'],
+              ['showAquiferIds', 'Aquifer IDs'],
+              ['showWellIds', 'Well IDs'],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="rfs-check">
+                <input type="checkbox" checked={display[key]} onChange={e => onDisplayChange({ [key]: e.target.checked })} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+
+          <p className="rfs-label rfs-label-spaced">Filter wells</p>
+          <label className="rfs-field-row !mt-0" title="Hide wells with fewer measurements than this">
+            <span>At least</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={display.minObs}
+              onChange={e => onDisplayChange({ minObs: Math.max(0, parseInt(e.target.value) || 0) })}
+              className="rfs-field"
+            />
+            <span>measurements</span>
+          </label>
+          <div className="rfs-field-row" title="Show only wells measured at some point in these years">
+            <label className="rfs-check !p-0">
+              <input type="checkbox" checked={display.filterDates} onChange={e => onDisplayChange({ filterDates: e.target.checked })} />
+              <span>Measured</span>
+            </label>
+            <input
+              type="number"
+              min={1800}
+              max={2200}
+              placeholder="from"
+              aria-label="From year"
+              value={display.filterMinYear}
+              onChange={e => onDisplayChange({ filterMinYear: e.target.value })}
+              disabled={!display.filterDates}
+              className="rfs-field"
+            />
+            <span className="text-[var(--text-faint)]">to</span>
+            <input
+              type="number"
+              min={1800}
+              max={2200}
+              placeholder="to"
+              aria-label="To year"
+              value={display.filterMaxYear}
+              onChange={e => onDisplayChange({ filterMaxYear: e.target.value })}
+              disabled={!display.filterDates}
+              className="rfs-field"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Edit Region Modal */}
       {editing && editing.startsWith('region-') && (() => {
