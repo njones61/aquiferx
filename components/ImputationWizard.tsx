@@ -450,7 +450,7 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
                   <label className={labelCls}>Gap Size (days)</label>
                   <input type="number" value={gapSizeDays} min={1} max={7300} step={1}
                     onChange={e => setGapSizeDays(Math.max(1, parseInt(e.target.value) || 730))} className={inputCls} />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Gaps larger than this use ELM model</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Gaps longer than this are filled by the <abbr title="Extreme learning machine: a fast single-layer neural network, trained here on each well's measurements and soil moisture to estimate water levels across long gaps" className="cursor-help">ELM</abbr> model</p>
                 </div>
                 <div>
                   <label className={labelCls}>Pad Size (days)</label>
@@ -516,7 +516,7 @@ const ImputationWizard: React.FC<ImputationWizardProps> = ({
                   <div><span className="text-slate-400">Min Samples:</span> {minSamples}</div>
                   <div><span className="text-slate-400">Gap Size:</span> {gapSizeDays} days</div>
                   <div><span className="text-slate-400">Pad Size:</span> {padSizeDays} days</div>
-                  <div><span className="text-slate-400">Model:</span> ELM (500 units, λ=100)</div>
+                  <div title="Extreme learning machine: a fast single-layer neural network, trained here on each well's measurements and soil moisture to estimate water levels across long gaps"><span className="text-slate-400">Model:</span> ELM (500 units, λ=100)</div>
                   <div><span className="text-slate-400">Wells:</span> {qualifiedWellCount} qualified</div>
                 </div>
               </div>

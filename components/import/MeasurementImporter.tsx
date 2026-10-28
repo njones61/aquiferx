@@ -588,7 +588,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       const noGseCount = validated.length - measurements.length;
       if (noGseCount > 0) {
         report.dropped.count += noGseCount;
-        report.dropped.details.push(`${noGseCount} record(s) from wells without a ground surface elevation (cannot convert depth to WTE)`);
+        report.dropped.details.push(`${noGseCount} record(s) from wells without a ground surface elevation (cannot convert depth to water table elevation)`);
       }
 
       // Surface batches that failed to download — previously these were
@@ -1599,7 +1599,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         {dataSource === 'usgs' && !file && (
           <div className="mb-4">
             <p className="text-sm text-slate-500 mb-3">
-              Download water level measurements from USGS for wells with USGS site IDs. Depth values will be converted to water table elevation using GSE.
+              Download water level measurements from USGS for wells with USGS site IDs. Depths to water are converted to water table elevation (WTE) using each well's ground surface elevation (GSE).
             </p>
             {/* Scope selector — only when multiple aquifers */}
             {aquiferList.length > 1 && (
@@ -2072,7 +2072,7 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
                 <input type="checkbox" checked={wteIsDepth}
                   onChange={e => setWteIsDepth(e.target.checked)}
                   className="text-blue-600 rounded" />
-                <span className="text-xs text-slate-600">WTE values are depth below ground surface (will convert to elevation using GSE)</span>
+                <span className="text-xs text-slate-600">The water table elevation (WTE) column holds depth to water below the ground. Convert it to elevation using each well's ground surface elevation (GSE).</span>
               </label>
             )}
           </div>

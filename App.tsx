@@ -1527,7 +1527,7 @@ const App: React.FC = () => {
                       {effectiveTab === 'waterLevel' ? (
                         <>
                           {activeDataType.code === 'wte' && (
-                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] cursor-pointer select-none">
+                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] cursor-pointer select-none" title="Show each well's ground surface elevation (GSE)">
                               <input type="checkbox" checked={showGSE} onChange={(e) => setShowGSE(e.target.checked)} className="rfs-check" />
                               GSE
                             </label>

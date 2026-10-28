@@ -41,7 +41,7 @@ const CrsPickerPanel: React.FC<CrsPickerPanelProps> = ({ crs, accent = defaultAc
               <option key={o.code} value={o.code}>{o.label}</option>
             ))}
             {!presetKnown && <option value="__other__">{crs.crsName}</option>}
-            <option value="__epsg__">Enter EPSG code…</option>
+            <option value="__epsg__">Enter an EPSG code (the number of a coordinate system)…</option>
           </select>
           <button
             onClick={crs.handleAutoDetectCrs}

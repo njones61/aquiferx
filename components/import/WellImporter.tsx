@@ -168,7 +168,7 @@ const WellImporter: React.FC<WellImporterProps> = ({
     { key: 'well_name', label: 'Well Name', required: false },
     { key: 'lat', label: 'Latitude', required: true },
     { key: 'long', label: 'Longitude', required: true },
-    { key: 'gse', label: 'Ground Surface Elevation', required: false },
+    { key: 'gse', label: 'Ground surface elevation (GSE)', required: false },
     ...(!singleUnit && aquiferAssignment === 'csv-field'
       ? [{ key: 'aquifer_id', label: 'Aquifer ID', required: false }] : []),
   ];
@@ -656,7 +656,7 @@ const WellImporter: React.FC<WellImporterProps> = ({
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="aq-assign" checked={aquiferAssignment === 'by-location'}
                       onChange={() => setAquiferAssignment('by-location')} className="text-blue-600" />
-                    <span className="text-sm text-slate-700">Assign by well location (point-in-polygon)</span>
+                    <span className="text-sm text-slate-700">Assign by location (the aquifer each well falls inside)</span>
                   </label>
                 </>
               )}

@@ -111,7 +111,7 @@ const DataEditor: React.FC<DataEditorProps> = ({ well, measurements, allMeasurem
             onChange={e => setIqrMultiplier(parseFloat(e.target.value))}
             className="w-32 accent-blue-600"
           />
-          <span className="text-slate-500">{iqrMultiplier}&times; IQR</span>
+          <span className="text-slate-500 cursor-help" title="Interquartile range: the spread of the middle half of the values, from the 25th to the 75th percentile">{iqrMultiplier}&times; IQR</span>
           <span className="text-red-600 font-medium ml-auto">
             {outlierCount} outlier{outlierCount === 1 ? '' : 's'}
           </span>

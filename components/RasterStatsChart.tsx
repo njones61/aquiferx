@@ -95,7 +95,7 @@ const RasterStatsChart: React.FC<RasterStatsChartProps> = ({
               <input type="checkbox" checked={showMedian} onChange={e => setShowMedian(e.target.checked)} className="accent-purple-500 rounded" />
               Median
             </label>
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-dim)]">
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-dim)]" title="Interquartile range: the spread of the middle half of the values, from the 25th to the 75th percentile">
               <input type="checkbox" checked={showIqr} onChange={e => setShowIqr(e.target.checked)} className="accent-teal-500 rounded" />
               P25–P75 (IQR)
             </label>
