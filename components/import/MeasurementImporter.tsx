@@ -106,8 +106,9 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
   const [rawUSGSMeasurements, setRawUSGSMeasurements] = useState<USGSMeasurement[]>([]);
 
   // Phase 3: smart well discovery + column detection
-  // Toggle: does the CSV include per-row well locations (name / lat / lng)?
-  // Default ON when the region has no wells (bootstrap case), off otherwise.
+  // Does the CSV carry per-row well names or coordinates? Set from the
+  // detected columns on upload (and on with no wells yet, to bootstrap
+  // them); the column box has a checkbox to change it.
   const [hasWellColumns, setHasWellColumns] = useState(existingWellCount === 0);
   // CRS picker (managed via useCrsPicker; see below where the hook is called)
   const [existingWellsFull, setExistingWellsFull] = useState<ExistingWell[]>([]);
@@ -285,6 +286,10 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
       setFile(uploaded);
       setMatchResults(null);
       setMatchSummary(null);
+      setHasWellColumns(
+        existingWellCount === 0 ||
+        !!uploaded.mapping['well_name'] || (!!uploaded.mapping['lat'] && !!uploaded.mapping['long'])
+      );
 
       if (uploaded.mapping['date'] && Array.isArray(uploaded.data)) {
         const detected = detectDateFormat(uploaded.data as Record<string, string>[], uploaded.mapping['date']);
@@ -1582,22 +1587,6 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
           <>
             <p className="text-sm text-slate-500 mb-3">Upload a CSV file with measurement data.</p>
 
-            {/* Well location toggle — gates the smart well matching pipeline */}
-            <label className="flex items-start gap-2 mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer">
-              <input
-                type="checkbox"
-                checked={hasWellColumns}
-                onChange={e => { setHasWellColumns(e.target.checked); setMatchResults(null); setMatchSummary(null); }}
-                className="mt-0.5 text-blue-600 rounded"
-              />
-              <div className="flex-1">
-                <span className="text-sm font-medium text-slate-700">Measurements file includes well locations</span>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Turn on if your CSV has per-row well names or latitude/longitude columns. The importer will match rows to existing wells (by ID, name, or proximity) and can create new wells for unmatched coordinates. Leave off for simple well_id + date + value files.
-                </p>
-              </div>
-            </label>
-
             <label className="block mb-4">
               <input type="file" accept=".csv,.txt" onChange={handleUpload}
                 className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
@@ -1824,7 +1813,20 @@ const MeasurementImporter: React.FC<MeasurementImporterProps> = ({
         {/* Inline structural column mapping — replaces the popup modal */}
         {file && dataSource === 'upload' && (
           <div className="mb-4 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-            <p className="text-sm font-medium text-slate-700 mb-3">Map Structural Columns</p>
+            <p className="text-sm font-medium text-slate-700 mb-2">Columns</p>
+            <label className="flex items-start gap-2 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasWellColumns}
+                onChange={e => { setHasWellColumns(e.target.checked); setMatchResults(null); setMatchSummary(null); }}
+                className="mt-0.5 text-blue-600 rounded"
+              />
+              <span className="text-xs text-slate-600">
+                <span className="font-medium text-slate-700">The file has well names or coordinates.</span>{' '}
+                Rows are matched to wells by ID, name or location, and new wells are made for coordinates that
+                match none. {hasWellColumns ? 'Turn off if the file only has well IDs.' : 'Turn on to choose those columns below.'}
+              </span>
+            </label>
             <div className="space-y-3">
               {fieldDefs.map(col => (
                 <div key={col.key} className="flex items-center space-x-3">
