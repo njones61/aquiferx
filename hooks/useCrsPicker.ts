@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   reprojectPoint,
   COMMON_CRS_OPTIONS,
@@ -149,6 +149,16 @@ export function useCrsPicker({ regionBounds, samples, onCrsChange }: UseCrsPicke
       lng >= minLng - dLng && lng <= maxLng + dLng;
     return { ok: inside, text: `${lat.toFixed(4)}, ${lng.toFixed(4)}` };
   }, [samples, coordinateCrs, regionBounds]);
+
+  // When a new set of coordinates lands outside the region under the CRS in
+  // use, try auto-detect once for that set, without waiting for the button
+  const autoTriedFor = useRef<SampleCoord[] | null>(null);
+  useEffect(() => {
+    if (!crsPreview || crsPreview.ok || isAutoDetecting) return;
+    if (autoTriedFor.current === samples) return;
+    autoTriedFor.current = samples;
+    handleAutoDetectCrs();
+  }, [crsPreview, samples, isAutoDetecting, handleAutoDetectCrs]);
 
   return {
     coordinateCrs,
