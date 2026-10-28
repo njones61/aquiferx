@@ -41,7 +41,7 @@
 ## Conventions
 - Data type codes: lowercase alphanumeric + underscore, max 20 chars; "wte" is the reserved default (water table elevation)
 - **Catalog is authoritative**: standard WQ parameters (nitrate, arsenic, pH, etc.) live in `catalog_wq.json` and cannot be overridden per-region. If a region needs a different unit or name for a parameter, make a custom type with a non-catalog code (e.g. `hardness_caco3`) — not a rename of the catalog entry
-- **No pre-staging empty types**: a data type exists in a region exactly when its `data_{code}.csv` exists on disk. There is no way to "declare a type in advance" — importing data is the only action that creates one. DataTypeEditor only manages non-catalog customs; even those must have a data file to appear in the header dropdown
+- **No pre-staging empty types**: a data type exists in a region exactly when its `data_{code}.csv` exists on disk. There is no way to "declare a type in advance" — importing data is the only action that creates one. DataTypeEditor renames and deletes non-catalog customs; new ones come only from the measurement importer
 - **Custom codes must not collide with catalog codes**: DataTypeEditor and the importer's detection panel both enforce this
 - Single-unit regions: aquifer section dimmed in UI, all data auto-assigned `aquifer_id=0`
 - CSV delimiter auto-detection (comma vs tab)

@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Plus, Pencil, Trash2, Loader2, Info, BookOpen } from 'lucide-react';
+import { X, Pencil, Trash2, Info, BookOpen } from 'lucide-react';
 import { DataType, RegionMeta, ParameterCatalog } from '../../types';
 import { saveFiles, deleteFile } from '../../services/importUtils';
 import { loadCatalog } from '../../services/catalog';
 import ConfirmDialog from './ConfirmDialog';
 import CatalogBrowser from '../CatalogBrowser';
-import { listRegions } from '../../services/dataStore';
 
 interface DataTypeEditorProps {
   regionId: string;
@@ -17,37 +16,22 @@ interface DataTypeEditorProps {
   onClose: () => void;
 }
 
-function generateCode(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20);
-}
-
-function isValidCode(code: string): boolean {
-  return /^[a-z0-9_]{1,20}$/.test(code);
-}
-
 const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
   regionId, regionName, lengthUnit, customDataTypes, singleUnit, onUpdate, onClose
 }) => {
   const [types, setTypes] = useState<DataType[]>(customDataTypes);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [deleteCode, setDeleteCode] = useState<string | null>(null);
 
-  // Custom add form
-  const [newName, setNewName] = useState('');
-  const [newCode, setNewCode] = useState('');
-  const [newUnit, setNewUnit] = useState('');
-  const [codeError, setCodeError] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   // Edit form
   const [editName, setEditName] = useState('');
   const [editUnit, setEditUnit] = useState('');
 
-  // Catalog (for collision validation)
+  // Catalog (to flag a custom code that collides with it)
   const [catalog, setCatalog] = useState<ParameterCatalog | null>(null);
 
-  // Cross-region custom suggestions (non-catalog only)
-  const [suggestions, setSuggestions] = useState<DataType[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showCatalogBrowser, setShowCatalogBrowser] = useState(false);
 
@@ -60,45 +44,6 @@ const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
     [catalog]
   );
 
-  useEffect(() => {
-    const fetchSuggestions = async () => {
-      try {
-        const allRegions: any[] = await listRegions();
-        const existing = new Set(types.map(t => t.code));
-        const seen = new Set<string>();
-        const sugs: DataType[] = [];
-        for (const r of allRegions) {
-          if (r.id === regionId) continue;
-          const others: DataType[] = Array.isArray(r.customDataTypes)
-            ? r.customDataTypes
-            : Array.isArray(r.dataTypes)
-              ? r.dataTypes
-              : [];
-          for (const dt of others) {
-            if (existing.has(dt.code) || seen.has(dt.code) || dt.code === 'wte') continue;
-            if (catalogCodes.has(dt.code)) continue;
-            seen.add(dt.code);
-            sugs.push(dt);
-          }
-        }
-        setSuggestions(sugs);
-      } catch {}
-    };
-    fetchSuggestions();
-  }, [types, regionId, catalogCodes]);
-
-  const validateCode = (code: string) => {
-    if (!isValidCode(code)) { setCodeError('Must be lowercase alphanumeric + underscore, max 20 chars'); return false; }
-    if (code === 'wte') { setCodeError('Cannot use reserved code "wte"'); return false; }
-    if (catalogCodes.has(code)) {
-      setCodeError(`"${code}" is a catalog parameter — don't add it as a custom. Just import a column as "${code}" and it will appear here automatically.`);
-      return false;
-    }
-    if (types.some(t => t.code === code)) { setCodeError('Code already exists'); return false; }
-    setCodeError('');
-    return true;
-  };
-
   const persistTypes = async (updatedTypes: DataType[]) => {
     setIsSaving(true);
     try {
@@ -107,24 +52,10 @@ const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
       setTypes(updatedTypes);
       onUpdate(updatedTypes);
     } catch (err) {
-      setCodeError(`Failed to save: ${err}`);
+      setSaveError(`Failed to save: ${err}`);
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleAddCustom = async () => {
-    if (!newName.trim() || !validateCode(newCode)) return;
-    const dt: DataType = { code: newCode, name: newName.trim(), unit: newUnit };
-    await persistTypes([...types, dt]);
-    setShowAddForm(false);
-    setNewName('');
-    setNewCode('');
-    setNewUnit('');
-  };
-
-  const handleAddSuggestion = async (dt: DataType) => {
-    await persistTypes([...types, dt]);
   };
 
   const startEdit = (dt: DataType) => {
@@ -245,57 +176,11 @@ const DataTypeEditor: React.FC<DataTypeEditorProps> = ({
           <p className="text-sm text-slate-400 italic mb-4">No custom types for this region.</p>
         )}
 
-        {/* Add section */}
-        {!showAddForm ? (
-          <div className="mb-4">
-            <button onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 font-medium">
-              <Plus size={14} /> Add Custom Type
-            </button>
-
-            {suggestions.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs font-medium text-slate-500 mb-2">Custom types from other regions:</p>
-                <div className="flex flex-wrap gap-2">
-                  {suggestions.map(dt => (
-                    <button key={dt.code} onClick={() => handleAddSuggestion(dt)}
-                      className="px-2 py-1 bg-slate-100 text-slate-700 rounded-full text-xs hover:bg-blue-50 hover:text-blue-700 transition-colors">
-                      + {dt.name} ({dt.unit})
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4">
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
-                <input value={newName} onChange={e => { setNewName(e.target.value); const g = generateCode(e.target.value); setNewCode(g); validateCode(g); }}
-                  placeholder="e.g., BOD5" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" autoFocus />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Code</label>
-                <input value={newCode} onChange={e => { setNewCode(e.target.value); validateCode(e.target.value); }}
-                  placeholder="e.g., bod5" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono" />
-                {codeError && <p className="text-xs text-red-600 mt-1">{codeError}</p>}
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Unit</label>
-                <input value={newUnit} onChange={e => setNewUnit(e.target.value)}
-                  placeholder="e.g., mg/L" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button onClick={() => { setShowAddForm(false); setNewName(''); setNewCode(''); setNewUnit(''); setCodeError(''); }} className="px-3 py-1.5 text-sm text-slate-600">Cancel</button>
-                <button onClick={handleAddCustom} disabled={!newName.trim() || !newCode || !!codeError || isSaving}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1">
-                  {isSaving && <Loader2 size={12} className="animate-spin" />} Add
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <p className="text-xs text-slate-500 mb-4">
+          Custom types are created when you import measurements: in Add Measurements, set a column's type to
+          "+ New custom type". Here you can rename one, change its unit, or delete it along with its data.
+        </p>
+        {saveError && <p className="text-xs text-red-600 mb-4">{saveError}</p>}
 
         <div className="flex justify-end">
           <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-slate-50 rounded-lg font-medium text-sm hover:bg-slate-700">Done</button>
